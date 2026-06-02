@@ -5,6 +5,11 @@ import { DbUser, Product, Order, Project, UserRole, ProductCategory, OrderStatus
 // --- MongoDB Connection setup ---
 export const connectDB = async () => {
   try {
+    if (!process.env.MONGODB_URI) {
+      console.error('\n❌ CRITICAL ERROR: MONGODB_URI is MISSING in Render Environment Variables!');
+      console.error('👉 Please go to Render Dashboard > Your Project > Environment > Add MONGODB_URI\n');
+    }
+
     // Default to local mongodb if MONGODB_URI is not set
     const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/furnidesign';
     await mongoose.connect(uri);
