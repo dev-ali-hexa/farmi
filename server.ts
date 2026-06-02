@@ -7,7 +7,7 @@ import { createServer as createViteServer } from 'vite';
 import { connectDB, seedDB, UserModel, ProductModel, OrderModel, ProjectModel } from './server/db.js';
 import { DbUser, User, UserRole, ProductCategory, OrderStatus, ProjectStatus } from './src/types.js';
 
-const PORT = process.env.PORT || 3000;
+const PORT = parseInt(process.env.PORT || '3000', 10);
 const JWT_SECRET = process.env.JWT_SECRET || 'furniture-rendering-secret';
 
 interface CustomRequest extends express.Request {
