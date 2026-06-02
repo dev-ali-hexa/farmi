@@ -1,0 +1,6 @@
+{
+  "name": "Furniture & Interior Design System",
+  "description": "A comprehensive, full-stack management system for browsing furniture, scheduling interior design consultations, tracking orders, and managing design projects.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

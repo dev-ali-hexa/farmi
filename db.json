@@ -1,0 +1,50 @@
+{
+  "users": [
+    {
+      "id": "usr_admin",
+      "email": "admin@gmail.com",
+      "name": "System Admin",
+      "role": "admin",
+      "phone": "+1 (555) 0199",
+      "address": "Corporate Headquarters, NY",
+      "createdAt": "2026-06-01T18:02:34.638Z",
+      "passwordHash": "$2b$10$m19VNGPbBW6gq6MdgXui5uNgmXkZnUkGUY/bUDSvvynvq4p2sL4Wy"
+    },
+    {
+      "id": "usr_nhhy0wrrq",
+      "email": "dev.ali.soet@gmail.com",
+      "name": "ali khan",
+      "role": "customer",
+      "phone": "9340198216",
+      "address": "ujjain",
+      "createdAt": "2026-06-02T07:52:03.795Z",
+      "passwordHash": "$2b$10$X1EAdHre/HGPI1Oa8wag7OVemei7qW144fz5lr8F8wq0527MmKrwu"
+    },
+    {
+      "id": "usr_6b1ajt69a",
+      "email": "soet@gmail.com",
+      "name": "soet",
+      "role": "customer",
+      "phone": "989898",
+      "address": "",
+      "createdAt": "2026-06-02T08:30:26.271Z",
+      "passwordHash": "$2b$10$y3IiCAcWFDOufmZVl634KeQvEAAQ1jFPLh/Dnf1cYVWpB8hHjbxMi",
+      "isBlocked": true
+    }
+  ],
+  "products": [],
+  "orders": [],
+  "projects": [
+    {
+      "id": "proj_sp0g1fdrb",
+      "customerId": "usr_6b1ajt69a",
+      "customerName": "soet",
+      "email": "soet@gmail.com",
+      "requestDetails": "hjhhgh",
+      "preferredStyle": "Mid-Century Modern",
+      "status": "Requested",
+      "createdAt": "2026-06-02T08:30:41.536Z",
+      "updatedAt": "2026-06-02T08:30:41.536Z"
+    }
+  ]
+}
