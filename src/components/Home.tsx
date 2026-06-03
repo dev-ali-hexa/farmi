@@ -19,6 +19,7 @@ export default function Home({
   user,
   onCategorySelect
 }: HomeProps) {
+  const offerProducts = products.filter(p => p.isOffer);
 
   return (
     <div className="space-y-16 animate-[fadeIn_0.3s_ease-out]">
@@ -66,6 +67,54 @@ export default function Home({
           </div>
         </div>
       </div>
+
+      {/* EXCLUSIVE OFFERS SECTION */}
+      {offerProducts.length > 0 && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <div className="space-y-2">
+              <span className="text-[10px] font-mono tracking-widest text-red-600 font-bold uppercase">LIMITED TIME DEALS</span>
+              <h2 className="font-display text-2xl md:text-3xl font-bold tracking-tight text-neutral-900">Exclusive Offers</h2>
+              <p className="text-xs text-neutral-500">Premium pieces currently featured at promotional values.</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {offerProducts.map((prod) => (
+              <div key={prod.id} className="group bg-white rounded-3xl border border-red-100 overflow-hidden shadow-xs hover:shadow-lg hover:border-red-300 transition flex flex-col h-full">
+                <div className="relative aspect-square overflow-hidden bg-neutral-50">
+                  <img src={prod.images[0]} alt={prod.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
+                  <div className="absolute top-3 left-3 bg-red-500 text-white text-[9px] font-bold px-2 py-1 rounded shadow-sm font-mono tracking-wide">
+                    {prod.originalPrice && prod.originalPrice > prod.price 
+                      ? `${Math.round(((prod.originalPrice - prod.price) / prod.originalPrice) * 100)}% OFF DEAL` 
+                      : 'SPECIAL OFFER'}
+                  </div>
+                </div>
+                <div className="p-5 flex-1 flex flex-col justify-between space-y-3">
+                  <div>
+                    <h4 className="font-display font-bold text-neutral-900 text-sm line-clamp-1">{prod.name}</h4>
+                    <p className="text-[10px] text-neutral-500 mt-1 line-clamp-2">{prod.description}</p>
+                  </div>
+                  <div className="flex items-center justify-between pt-3 border-t border-neutral-100">
+                    <div className="flex flex-col">
+                      {prod.originalPrice && prod.originalPrice > prod.price && (
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="text-[10px] text-neutral-400 line-through font-mono">₹{prod.originalPrice}</span>
+                          <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1 py-0.5 rounded">
+                            {Math.round(((prod.originalPrice - prod.price) / prod.originalPrice) * 100)}% OFF
+                          </span>
+                        </div>
+                      )}
+                      <span className="text-lg font-bold text-red-600 font-mono leading-none">₹{prod.price}</span>
+                    </div>
+                    <button onClick={() => { setActiveTab('products'); onCategorySelect(prod.category); }} className="text-xs font-bold text-neutral-900 hover:text-red-600 underline">View</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 2. CATEGORY CIRCLE BENTO */}
       <div className="space-y-6 text-center">

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  ShoppingCart, LayoutGrid, Layers, Tag, Check, ShoppingBag, Truck, Info, Heart, 
+  ShoppingCart, LayoutGrid, Layers, Tag, Check, ShoppingBag, Truck, Info, Heart, Search,
   ArrowUpRight, Star, Sliders, ChevronDown, RefreshCw, X, Box, RotateCcw, 
   Eye, CornerRightUp, Compass, Move
 } from 'lucide-react';
@@ -29,7 +29,8 @@ const POPULAR_TAGS = ['Modern', 'Wooden', 'Luxury', 'Minimal', 'Comfort', 'New']
 
 export default function ProductCatalog({ products, user, onAddToCart, onOrderNow, selectedCategory, setSelectedCategory }: ProductCatalogProps) {
   // Filter state
-  const [maxPrice, setMaxPrice] = useState<number>(3000);
+  const [maxPrice, setMaxPrice] = useState<number>(300000);
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [sortOption, setSortOption] = useState<string>('Latest');
   const [hoveredProduct, setHoveredProduct] = useState<string | null>(null);
@@ -122,7 +123,10 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
                    lowerDesc.includes(activeTag.toLowerCase()) ||
                    p.category.toLowerCase().includes(activeTag.toLowerCase());
     }
-    return categoryMatches && priceMatches && tagMatches;
+    // 4. Search Query Matches
+    const searchMatches = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.description.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    return categoryMatches && priceMatches && tagMatches && searchMatches;
   });
 
   // Sorting logic handler
@@ -144,7 +148,7 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
       {/* Curved Hero spotlight section */}
       <div className="relative rounded-3xl overflow-hidden bg-neutral-900 text-white min-h-[220px] md:min-h-[280px] flex items-center p-6 md:p-12 shadow-md">
         <div className="absolute inset-0 opacity-40 bg-[url('https://images.unsplash.com/photo-1540518614846-7eded433c457?auto=format&fit=crop&q=80&w=1200')] bg-cover bg-center"></div>
-        <div className="absolute inset-0 bg-gradient-to-r from-neutral-950/90 via-neutral-950/70 to-transparent"></div>
+        <div className="absolute inset-0 bg-linear-to-r from-neutral-900/40 via-neutral-900/10 to-transparent"></div>
         
         <div className="relative max-w-xl space-y-3 z-10">
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-mono tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/20">
@@ -169,11 +173,12 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
               <Sliders className="w-3.5 h-3.5 text-amber-500" />
               <span>COLLECTION FILTERS</span>
             </span>
-            {(selectedCategory !== 'All' || maxPrice !== 3000 || activeTag !== null) && (
+            {(selectedCategory !== 'All' || maxPrice !== 300000 || activeTag !== null) && (
               <button
                 onClick={() => {
                   setSelectedCategory('All');
-                  setMaxPrice(3000);
+                  setMaxPrice(300000);
+                  setSearchQuery('');
                   setActiveTag(null);
                 }}
                 className="text-[10px] text-amber-600 font-bold hover:underline font-mono cursor-pointer"
@@ -208,23 +213,31 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
 
           {/* Brand Pricing Range filter */}
           <div className="space-y-3.5 pt-4 border-t border-stone-100">
-            <div className="flex justify-between items-center text-xs">
+            <div className="flex justify-between items-center">
               <h4 className="font-semibold text-neutral-900">Filter By Price</h4>
-            <span className="font-mono font-bold text-amber-600">₹{maxPrice} max</span>
+              <div className="flex items-center gap-1">
+                <span className="text-xs font-mono font-bold text-amber-600">₹</span>
+                <input
+                  type="number"
+                  value={maxPrice}
+                  onChange={(e) => setMaxPrice(Number(e.target.value) || 0)}
+                  className="w-20 px-2 py-1 text-xs font-mono font-bold border border-stone-200 rounded-md focus:outline-none focus:border-amber-400 bg-stone-50"
+                />
+              </div>
             </div>
             <input
               type="range"
-              min="50"
-              max="3000"
-              step="50"
+              min="500"
+              max="300000"
+              step="500"
               value={maxPrice}
               onChange={(e) => setMaxPrice(Number(e.target.value))}
               className="w-full accent-neutral-950 cursor-pointer h-1 bg-stone-150 rounded-lg outline-none"
             />
             <div className="flex justify-between text-[10px] text-neutral-400 font-mono">
-            <span>₹50</span>
-            <span>₹1,500</span>
-            <span>₹3,000</span>
+            <span>₹500</span>
+            <span>₹1,50,000</span>
+            <span>₹3,00,000</span>
             </div>
           </div>
 
@@ -265,11 +278,24 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
         <section className="lg:col-span-9 space-y-6">
           {/* Header Actions Ribbon */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-neutral-100 pb-3.5">
-            <div className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider font-mono">
-              Displaying {sortedProducts.length} Premium masterpieces
+            {/* Search Input Bar */}
+            <div className="relative w-full sm:max-w-md">
+              <Search className="absolute left-3.5 top-3 w-5 h-5 text-stone-400" />
+              <input
+                type="text"
+                placeholder="Search for furniture pieces..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-11 pr-4 py-2.5 text-sm bg-white border-2 border-stone-200 rounded-xl focus:outline-none focus:border-stone-400 focus:ring-1 focus:ring-stone-400 transition shadow-sm"
+              />
             </div>
 
-            <div className="flex items-center gap-2 text-xs font-semibold">
+            <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-4">
+              <div className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider font-mono">
+                {sortedProducts.length} pieces
+              </div>
+
+              <div className="flex items-center gap-2 text-xs font-semibold">
               <span className="text-neutral-400">Sort By:</span>
               <div className="relative">
                 <select
@@ -283,6 +309,7 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
                   <option>Popular</option>
                 </select>
               </div>
+              </div>
             </div>
           </div>
 
@@ -293,7 +320,8 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
               <button
                 onClick={() => {
                   setSelectedCategory('All');
-                  setMaxPrice(3000);
+                  setSearchQuery('');
+                  setMaxPrice(300000);
                   setActiveTag(null);
                 }}
                 className="mt-4 px-4 py-2 bg-neutral-950 text-white rounded-xl text-xs font-semibold cursor-pointer"
@@ -370,9 +398,21 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
 
                     {/* Prancing tags and prices details */}
                     <div className="pt-2 border-t border-stone-50 flex items-center justify-between">
-                      <span className="text-xs font-mono font-bold text-neutral-950 font-semibold bg-stone-50 px-2 py-1 rounded-lg">
-                    ₹{prod.price}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-mono font-bold text-red-600 bg-red-50 px-2 py-1 rounded-lg">
+                          ₹{prod.price}
+                        </span>
+                        {prod.originalPrice && prod.originalPrice > prod.price && (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-mono text-neutral-400 line-through">
+                              ₹{prod.originalPrice}
+                            </span>
+                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1 py-0.5 rounded w-fit">
+                              {Math.round(((prod.originalPrice - prod.price) / prod.originalPrice) * 100)}% OFF
+                            </span>
+                          </div>
+                        )}
+                      </div>
                       <span className="text-[10px] text-amber-600 font-bold hover:underline font-mono inline-flex items-center gap-0.5">
                         <span>Details</span>
                         <ArrowUpRight className="w-3.5 h-3.5" />
@@ -461,15 +501,19 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
                     </h2>
 
                     <div className="flex items-center gap-3 pt-1">
-                      <span className="text-lg font-mono font-bold text-neutral-950 bg-stone-550/10 px-2 py-0.5 rounded-lg bg-stone-100">
+                      <span className="text-2xl font-mono font-bold text-red-600 bg-red-50 px-3 py-1 rounded-xl shadow-sm">
                     ₹{selectedProduct.price}
                       </span>
-                      <span className="text-xs font-mono text-neutral-300 line-through">
-                    ₹{Math.round(selectedProduct.price * 1.25)}
-                      </span>
-                      <span className="text-[10px] uppercase font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
-                        20% OFF SAVING
-                      </span>
+                      {selectedProduct.originalPrice && selectedProduct.originalPrice > selectedProduct.price && (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-sm font-mono text-neutral-400 line-through">
+                            ₹{selectedProduct.originalPrice}
+                          </span>
+                          <span className="text-xs uppercase font-mono font-bold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-lg shadow-sm">
+                            {Math.round(((selectedProduct.originalPrice - selectedProduct.price) / selectedProduct.originalPrice) * 100)}% OFF
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
 

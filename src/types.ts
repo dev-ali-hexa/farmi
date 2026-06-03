@@ -25,6 +25,8 @@ export interface Product extends BaseEntity {
   name: string;
   category: ProductCategory;
   price: number;
+  originalPrice?: number;
+  isOffer?: boolean;
   description: string;
   images: string[];
   stock: number;

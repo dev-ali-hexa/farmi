@@ -42,6 +42,8 @@ const productSchema = new mongoose.Schema<Product>({
   name: { type: String, required: true },
   category: { type: String, enum: ['Living Room', 'Bedroom', 'Kitchen', 'Office', 'Outdoor', 'Decor'], required: true },
   price: { type: Number, required: true },
+  originalPrice: Number,
+  isOffer: { type: Boolean, default: false },
   description: { type: String, required: true },
   images: [String],
   stock: { type: Number, required: true },

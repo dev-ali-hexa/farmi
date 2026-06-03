@@ -19,7 +19,8 @@ async function startServer() {
   await seedDB();
 
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // --- Auth Middleware ---
   const requireAuth = async (req: CustomRequest, res: express.Response, next: express.NextFunction): Promise<void> => {
@@ -170,8 +171,8 @@ async function startServer() {
   });
 
   app.post('/api/products', requireAuth, requireRole(['admin']), async (req, res) => {
-    const { name, category, price, description, images, stock } = req.body;
-    if (!name || !category || price === undefined || !description || stock === undefined) {
+    const { name, category, price, originalPrice, isOffer, description, images, stock } = req.body;
+    if (!name || !category || price === undefined || price === null || !description || stock === undefined) {
       res.status(400).json({ error: 'All product fields are required' });
       return;
     }
@@ -181,6 +182,8 @@ async function startServer() {
       name,
       category: category as ProductCategory,
       price: Number(price),
+      originalPrice: originalPrice ? Number(originalPrice) : null,
+      isOffer: !!isOffer,
       description,
       images: Array.isArray(images) && images.length > 0 ? images : ['https://images.unsplash.com/photo-1540518614846-7eded433c457?auto=format&fit=crop&q=80&w=600'],
       stock: Number(stock),
@@ -192,7 +195,7 @@ async function startServer() {
   });
 
   app.put('/api/products/:id', requireAuth, requireRole(['admin']), async (req, res) => {
-    const { name, category, price, description, images, stock } = req.body;
+    const { name, category, price, originalPrice, isOffer, description, images, stock } = req.body;
     const existing = await ProductModel.findOne({ id: req.params.id }).lean();
 
     if (!existing) {
@@ -205,6 +208,8 @@ async function startServer() {
       name: name !== undefined ? name : existing.name,
       category: category !== undefined ? category as ProductCategory : existing.category,
       price: price !== undefined ? Number(price) : existing.price,
+      originalPrice: originalPrice !== undefined ? (originalPrice === null ? null : Number(originalPrice)) : existing.originalPrice,
+      isOffer: isOffer !== undefined ? !!isOffer : existing.isOffer,
       description: description !== undefined ? description : existing.description,
       images: Array.isArray(images) ? images : existing.images,
       stock: stock !== undefined ? Number(stock) : existing.stock,

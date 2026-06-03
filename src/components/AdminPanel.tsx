@@ -46,9 +46,14 @@ export default function AdminPanel({
   const [productName, setProductName] = useState('');
   const [productCategory, setProductCategory] = useState<ProductCategory>('Living Room');
   const [productPrice, setProductPrice] = useState('');
+  const [productOriginalPrice, setProductOriginalPrice] = useState('');
+  const [isOfferProduct, setIsOfferProduct] = useState(false);
   const [productStock, setProductStock] = useState('');
   const [productDescription, setProductDescription] = useState('');
   const [productImageUrl, setProductImageUrl] = useState('');
+  const [productError, setProductError] = useState('');
+  const [productSuccess, setProductSuccess] = useState('');
+  const [isSubmittingProduct, setIsSubmittingProduct] = useState(false);
 
   // Form states - Customer creation/editing
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
@@ -67,6 +72,8 @@ export default function AdminPanel({
     setProductName('');
     setProductCategory('Living Room');
     setProductPrice('');
+    setProductOriginalPrice('');
+    setIsOfferProduct(false);
     setProductStock('');
     setProductDescription('');
     setProductImageUrl('');
@@ -78,6 +85,8 @@ export default function AdminPanel({
     setProductName(prod.name);
     setProductCategory(prod.category);
     setProductPrice(prod.price.toString());
+    setProductOriginalPrice(prod.originalPrice ? prod.originalPrice.toString() : '');
+    setIsOfferProduct(!!prod.isOffer);
     setProductStock(prod.stock.toString());
     setProductDescription(prod.description);
     setProductImageUrl(prod.images[0] || '');
@@ -85,10 +94,16 @@ export default function AdminPanel({
 
   const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setProductError('');
+    setProductSuccess('');
+    setIsSubmittingProduct(true);
+
     const payload = {
       name: productName,
       category: productCategory,
       price: Number(productPrice),
+      originalPrice: productOriginalPrice ? Number(productOriginalPrice) : null,
+      isOffer: isOfferProduct,
       stock: Number(productStock),
       description: productDescription,
       images: [productImageUrl ? productImageUrl : 'https://images.unsplash.com/photo-1540518614846-7eded433c457?auto=format&fit=crop&q=80&w=600'],
@@ -97,13 +112,19 @@ export default function AdminPanel({
     try {
       if (isEditingProduct && editingProductId) {
         await onEditProduct(editingProductId, payload);
+        setProductSuccess('Product updated successfully!');
       } else {
         await onAddProduct(payload);
+        setProductSuccess('Product added successfully!');
       }
       // Reset
       handleOpenAddProduct();
-    } catch (e) {
-      console.error(e);
+      setTimeout(() => setProductSuccess(''), 4000);
+    } catch (e: any) {
+      console.error('Product save error:', e);
+      setProductError(e.message || 'Failed to save product. File might be too large.');
+    } finally {
+      setIsSubmittingProduct(false);
     }
   };
 
@@ -305,6 +326,18 @@ export default function AdminPanel({
               {editingProductId ? `EDITING: ${editingProductId.toUpperCase()}` : 'NEW COLLECTION ENTRY'}
             </p>
 
+          {productSuccess && (
+            <div className="p-3 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-semibold flex items-center gap-2">
+              <CheckCircle className="w-4 h-4" />
+              {productSuccess}
+            </div>
+          )}
+          {productError && (
+            <div className="p-3 bg-red-50 text-red-700 border border-red-200 rounded-xl text-xs font-semibold">
+              {productError}
+            </div>
+          )}
+
             <form onSubmit={handleProductSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-neutral-700 mb-1">Piece Name</label>
@@ -319,7 +352,7 @@ export default function AdminPanel({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-neutral-700 mb-1">Category</label>
                   <select
@@ -338,7 +371,19 @@ export default function AdminPanel({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-neutral-700 mb-1">Starting Price (₹)</label>
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1">Actual Price (₹)</label>
+                  <input
+                    type="number"
+                    id="admin-product-original-price"
+                    placeholder="1200"
+                    value={productOriginalPrice}
+                    onChange={(e) => setProductOriginalPrice(e.target.value)}
+                    className="w-full text-xs px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:bg-white transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1">Offer/Selling Price (₹)</label>
                   <input
                     type="number"
                     required
@@ -349,6 +394,19 @@ export default function AdminPanel({
                     className="w-full text-xs px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:bg-white transition"
                   />
                 </div>
+              </div>
+
+              <div className="flex items-center gap-2 mt-2 bg-neutral-50 p-3 rounded-xl border border-neutral-200">
+                <input
+                  type="checkbox"
+                  id="admin-product-is-offer"
+                  checked={isOfferProduct}
+                  onChange={(e) => setIsOfferProduct(e.target.checked)}
+                  className="w-4 h-4 text-neutral-900 accent-neutral-900 cursor-pointer"
+                />
+                <label htmlFor="admin-product-is-offer" className="text-xs font-semibold text-neutral-700 cursor-pointer select-none">
+                  Feature this item in the "Exclusive Offers" section on Home Page
+                </label>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -367,8 +425,7 @@ export default function AdminPanel({
 
                 <div>
                   <label className="block text-xs font-semibold text-neutral-700 mb-1">Photo Reference (URL or Upload)</label>
-                  <div className="flex gap-2">
-                    <input
+                  <div className="flex gap-2">                 <input
                       type="text"
                       id="admin-product-image"
                       placeholder="URL or Upload..."
@@ -412,10 +469,11 @@ export default function AdminPanel({
               <div className="flex gap-2">
                 <button
                   type="submit"
+                  disabled={isSubmittingProduct}
                   id="admin-product-save"
-                  className="flex-1 bg-neutral-950 hover:bg-neutral-850 text-white font-semibold text-xs py-2.5 px-4 rounded-xl shadow-xs transition cursor-pointer"
+                  className="flex-1 bg-neutral-950 hover:bg-neutral-850 text-white font-semibold text-xs py-2.5 px-4 rounded-xl shadow-xs transition cursor-pointer disabled:opacity-50"
                 >
-                  {editingProductId ? 'Apply Modifications' : 'Register Piece'}
+                  {isSubmittingProduct ? 'Processing...' : (editingProductId ? 'Apply Modifications' : 'Register Piece')}
                 </button>
                 {editingProductId && (
                   <button
@@ -497,7 +555,11 @@ export default function AdminPanel({
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              onClick={() => onDeleteProduct(p.id)}
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to permanently delete "${p.name}"? This will remove it from the database.`)) {
+                                  onDeleteProduct(p.id);
+                                }
+                              }}
                               id={`btn-delete-prod-${p.id}`}
                               className="p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg cursor-pointer transition"
                               title="Delete record"
