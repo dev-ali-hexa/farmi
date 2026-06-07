@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Navbar from './components/Navbar.tsx';
 import AuthModal from './components/AuthModal.tsx';
 import ProductCatalog from './components/ProductCatalog.tsx';
@@ -11,7 +11,7 @@ import Services from './components/Services.tsx';
 import Projects from './components/Projects.tsx';
 import AboutUs from './components/AboutUs.tsx';
 import ContactUs from './components/ContactUs.tsx';
-import { Product, Order, Project, User, OrderStatus, ProductCategory } from './types.ts';
+import { Product, Order, Project, User, OrderStatus, ProductCategory, PromoCode } from './types.ts';
 import { Sofa, KeyRound, Key, ShieldCheck, Info, Sparkles, Sliders } from 'lucide-react';
 
 export default function App() {
@@ -20,12 +20,17 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('home');
   const [catalogCategory, setCatalogCategory] = useState<ProductCategory | 'All'>('All');
   const [showAuth, setShowAuth] = useState<boolean>(false);
+  const [customerDashboardActiveSegment, setCustomerDashboardActiveSegment] = useState<'cart' | 'orders' | 'profile' | 'projects' | 'wishlist'>('cart');
+  const [viewProductId, setViewProductId] = useState<string | null>(null);
+  const [cartHydrated, setCartHydrated] = useState<boolean>(false);
+  const cartSyncTimeoutRef = useRef<number | null>(null);
 
   // Standard data listings
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [customers, setCustomers] = useState<User[]>([]);
+  const [promos, setPromos] = useState<PromoCode[]>([]);
 
   // Local Shopping Cart state
   const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([]);
@@ -74,13 +79,27 @@ export default function App() {
   useEffect(() => {
     fetchProducts();
     if (user) {
+      fetchPromos();
       fetchOrders();
       fetchProjects();
       if (user.role === 'admin') {
         fetchCustomers();
       }
     }
-  }, [user]);
+  }, [user?.id, user?.role]);
+
+  // Hydrate cart from MongoDB when products and user are loaded
+  useEffect(() => {
+    if (user && user.cart && products.length > 0 && !cartHydrated) {
+      const hydrated = user.cart.map(cItem => {
+        const product = products.find(p => p && p.id === cItem.productId);
+        return product ? { product, quantity: cItem.quantity } : null;
+      }).filter(Boolean) as { product: Product; quantity: number }[];
+      
+      setCart(hydrated);
+      setCartHydrated(true);
+    }
+  }, [user, products, cartHydrated]);
 
   // Adjusts start screen tab when role is assigned
   useEffect(() => {
@@ -95,7 +114,7 @@ export default function App() {
     } else {
       setActiveTab('home');
     }
-  }, [user]);
+  }, [user?.id, user?.role]);
 
   // Sync API Data fetches
   const fetchProducts = async () => {
@@ -146,6 +165,18 @@ export default function App() {
     }
   };
 
+  const fetchPromos = async () => {
+    try {
+      const res = await fetch('/api/promos', { headers: getHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setPromos(data);
+      }
+    } catch (e) {
+      console.error('Failed to load promos:', e);
+    }
+  };
+
   // Authentication callbacks
   const handleAuthSuccess = (newToken: string, newUser: User) => {
     localStorage.setItem('token', newToken);
@@ -158,11 +189,32 @@ export default function App() {
     localStorage.removeItem('token');
     setToken(null);
     setUser(null);
+    setCustomerDashboardActiveSegment('cart'); // Reset segment on logout
     setCart([]);
     setOrders([]);
     setProjects([]);
     setCustomers([]);
+    setCartHydrated(false);
     setActiveTab('products');
+  };
+
+  const syncCartToDB = async (newCart: { product: Product; quantity: number }[]) => {
+    if (!user) return;
+    
+    if (cartSyncTimeoutRef.current) clearTimeout(cartSyncTimeoutRef.current);
+    
+    cartSyncTimeoutRef.current = window.setTimeout(async () => {
+      const cartPayload = newCart.map(item => ({ productId: item.product.id, quantity: item.quantity }));
+      try {
+        await fetch('/api/cart', {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: JSON.stringify({ cart: cartPayload })
+        });
+      } catch (e) {
+        console.error('Failed to sync cart:', e);
+      }
+    }, 500); // 500ms debounce delay
   };
 
   // Cart action pipelines
@@ -178,9 +230,12 @@ export default function App() {
         const newCart = [...prev];
         const newQty = Math.min(product.stock, newCart[existingIdx].quantity + 1);
         newCart[existingIdx] = { ...newCart[existingIdx], quantity: newQty };
+        syncCartToDB(newCart);
         return newCart;
       }
-      return [...prev, { product, quantity: 1 }];
+      const newCart = [...prev, { product, quantity: 1 }];
+      syncCartToDB(newCart);
+      return newCart;
     });
   };
 
@@ -190,21 +245,29 @@ export default function App() {
       return;
     }
     // Add to cart and immediately route him to checkout cart segment!
-    setCart([{ product, quantity: 1 }]);
+    const newCart = [{ product, quantity: 1 }];
+    setCart(newCart);
+    syncCartToDB(newCart);
     setActiveTab('customer_dashboard');
   };
 
   const handleUpdateCartQty = (productId: string, quantity: number) => {
-    setCart((prev) =>
-      prev.map((item) => (item.product.id === productId ? { ...item, quantity } : item))
-    );
+    setCart((prev) => {
+      const newCart = prev.map((item) => (item.product.id === productId ? { ...item, quantity } : item));
+      syncCartToDB(newCart);
+      return newCart;
+    });
   };
 
   const handleRemoveFromCart = (productId: string) => {
-    setCart((prev) => prev.filter((item) => item.product.id !== productId));
+    setCart((prev) => {
+      const newCart = prev.filter((item) => item.product.id !== productId);
+      syncCartToDB(newCart);
+      return newCart;
+    });
   };
 
-  const handlePlaceOrder = async (shippingAddress: string, paymentMethod: string) => {
+  const handlePlaceOrder = async (shippingAddress: string, paymentMethod: string, promoCode?: string) => {
     const itemsPayload = cart.map((item) => ({
       productId: item.product.id,
       quantity: item.quantity,
@@ -217,6 +280,7 @@ export default function App() {
         items: itemsPayload,
         shippingAddress,
         paymentMethod,
+        promoCode
       }),
     });
 
@@ -227,6 +291,7 @@ export default function App() {
 
     // Success: refresh listings and sweep cart
     setCart([]);
+    syncCartToDB([]);
     fetchOrders();
     fetchProducts(); // Stock levels decremented
   };
@@ -243,6 +308,51 @@ export default function App() {
       const updatedUser = await res.json();
       setUser(updatedUser);
     }
+  };
+
+  const handleToggleWishlist = async (productId: string) => {
+    if (!user) {
+      setShowAuth(true);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/customers/${user.id}/wishlist`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ productId }),
+      });
+      if (res.ok) {
+        const updatedUser = await res.json();
+        setUser(updatedUser);
+        // The ProductCatalog will handle the popup for wishlist changes
+      }
+    } catch (e) {
+      console.error('Failed to toggle wishlist:', e);
+    }
+  };
+
+  const handleAddReview = async (productId: string, rating: number, comment: string) => {
+    if (!user) {
+      setShowAuth(true);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/products/${productId}/reviews`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ rating, comment }),
+      });
+      if (res.ok) {
+        fetchProducts(); // Refresh products to get the new review
+      }
+    } catch (e) {
+      console.error('Failed to add review:', e);
+    }
+  };
+
+  const handleViewWishlist = () => {
+    setCustomerDashboardActiveSegment('wishlist');
+    setActiveTab('customer_dashboard');
   };
 
   // Consultations & Projects action flows
@@ -344,6 +454,24 @@ export default function App() {
     }
   };
 
+  const handleAddPromo = async (code: string, discount: number, usageLimit: number) => {
+    const res = await fetch('/api/promos', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ code, discount, usageLimit }),
+    });
+    if (res.ok) fetchPromos();
+    else { const err = await res.json(); throw new Error(err.error || 'Failed to create promo code'); }
+  };
+
+  const handleDeletePromo = async (id: string) => {
+    const res = await fetch(`/api/promos/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    if (res.ok) fetchPromos();
+  };
+
   // Render correct sub-view
   const renderContent = () => {
     if (activeTab === 'home') {
@@ -356,6 +484,10 @@ export default function App() {
           user={user}
           onCategorySelect={(cat) => {
             setCatalogCategory(cat as ProductCategory | 'All');
+            setActiveTab('products');
+          }}
+          onProductClick={(id) => {
+            setViewProductId(id);
             setActiveTab('products');
           }}
         />
@@ -404,6 +536,10 @@ export default function App() {
           onOrderNow={handleInstantBuy}
           selectedCategory={catalogCategory}
           setSelectedCategory={setCatalogCategory}
+          viewProductId={viewProductId}
+          clearViewProduct={() => setViewProductId(null)}
+          onToggleWishlist={handleToggleWishlist}
+          onAddReview={handleAddReview}
         />
       );
     }
@@ -423,6 +559,7 @@ export default function App() {
       return (
         <CustomerDashboard
           user={user}
+          products={products}
           orders={orders}
           projects={projects}
           onUpdateProfile={handleUpdateProfile}
@@ -430,6 +567,9 @@ export default function App() {
           onUpdateCartQty={handleUpdateCartQty}
           onRemoveFromCart={handleRemoveFromCart}
           onPlaceOrder={handlePlaceOrder}
+          onToggleWishlist={handleToggleWishlist}
+          promos={promos}
+          initialActiveSegment={customerDashboardActiveSegment}
         />
       );
     }
@@ -453,6 +593,7 @@ export default function App() {
           products={products}
           customers={customers}
           orders={orders}
+          promos={promos}
           projectsCount={projects.length}
           onAddProduct={handleAddProduct}
           onEditProduct={handleEditProduct}
@@ -460,6 +601,8 @@ export default function App() {
           onUpdateOrderStatus={handleUpdateOrderStatus}
           onAddCustomer={handleRegisterCustomerByAdmin}
           onEditCustomer={handleEditCustomerByAdmin}
+          onAddPromo={handleAddPromo}
+          onDeletePromo={handleDeletePromo}
         />
       );
     }
@@ -498,6 +641,7 @@ export default function App() {
           setActiveTab={setActiveTab}
           onLogout={handleLogout}
           onLoginClick={() => setShowAuth(true)}
+          onViewWishlist={handleViewWishlist}
           cartCount={cart.reduce((sum, item) => sum + item.quantity, 0)}
         />
 

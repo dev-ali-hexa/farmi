@@ -4,7 +4,8 @@ import path from 'path';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { createServer as createViteServer } from 'vite';
-import { connectDB, seedDB, UserModel, ProductModel, OrderModel, ProjectModel } from './server/db.js';
+import { connectDB, seedDB, UserModel, ProductModel, OrderModel, ProjectModel, PromoModel } from './server/db.js';
+import rateLimit from 'express-rate-limit';
 import { DbUser, User, UserRole, ProductCategory, OrderStatus, ProjectStatus } from './src/types.js';
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -21,6 +22,23 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+  // --- Rate Limiting ---
+  // General API rate limiter
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes)
+    message: { error: 'Too many requests from this IP, please try again after 15 minutes' },
+  });
+
+  // Stricter rate limiter for Auth (Login/Register)
+  const authLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 20, // Limit each IP to 20 login/register requests per hour
+    message: { error: 'Too many authentication attempts from this IP, please try again after an hour' },
+  });
+
+  app.use('/api/', apiLimiter);
 
   // --- Auth Middleware ---
   const requireAuth = async (req: CustomRequest, res: express.Response, next: express.NextFunction): Promise<void> => {
@@ -50,6 +68,8 @@ async function startServer() {
         address: latestUser.address,
         createdAt: latestUser.createdAt,
         isBlocked: !!latestUser.isBlocked,
+        wishlist: latestUser.wishlist,
+        cart: latestUser.cart || [],
       };
       next();
     } catch (e) {
@@ -77,7 +97,7 @@ async function startServer() {
   });
 
   // --- PHASE 1: AUTHENTICATION API ---
-  app.post('/api/auth/register', async (req, res) => {
+  app.post('/api/auth/register', authLimiter, async (req, res) => {
     const { email, password, name, role, phone, address } = req.body;
     if (!email || !password || !name) {
       res.status(400).json({ error: 'Email, password, and name are required' });
@@ -104,6 +124,8 @@ async function startServer() {
       address,
       createdAt: new Date().toISOString(),
       passwordHash,
+      cart: [],
+      wishlist: [],
     };
 
     await UserModel.create(newUser);
@@ -116,13 +138,15 @@ async function startServer() {
       phone: newUser.phone,
       address: newUser.address,
       createdAt: newUser.createdAt,
+      cart: newUser.cart,
+      wishlist: newUser.wishlist,
     };
 
     const token = jwt.sign(publicUser, JWT_SECRET, { expiresIn: '7d' });
     res.status(201).json({ token, user: publicUser });
   });
 
-  app.post('/api/auth/login', async (req, res) => {
+  app.post('/api/auth/login', authLimiter, async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) {
       res.status(400).json({ error: 'Email and password are required' });
@@ -155,6 +179,8 @@ async function startServer() {
       address: user.address,
       createdAt: user.createdAt,
       isBlocked: !!user.isBlocked,
+      cart: user.cart || [],
+      wishlist: user.wishlist || [],
     };
 
     const token = jwt.sign(publicUser, JWT_SECRET, { expiresIn: '7d' });
@@ -228,6 +254,26 @@ async function startServer() {
     res.json({ success: true, message: 'Product deleted' });
   });
 
+  app.post('/api/products/:id/reviews', requireAuth, async (req, res) => {
+    const { rating, comment } = req.body;
+    const product = await ProductModel.findOne({ id: req.params.id }).lean();
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    
+    const newReview = {
+      userId: req.user!.id,
+      userName: req.user!.name,
+      rating: Number(rating),
+      comment,
+      date: new Date().toLocaleDateString()
+    };
+    const updatedProduct = await ProductModel.findOneAndUpdate(
+      { id: req.params.id },
+      { reviews: [...(product.reviews || []), newReview] },
+      { new: true }
+    ).lean();
+    res.json(updatedProduct);
+  });
+
   // --- PHASE 3: CUSTOMER MANAGEMENT API ---
   app.get('/api/customers', requireAuth, requireRole(['admin']), async (req, res) => {
     const users = await UserModel.find().lean();
@@ -243,6 +289,7 @@ async function startServer() {
       isBlocked: !!u.isBlocked,
       createdAt: u.createdAt,
       orderCount: orders.filter(o => o.customerId === u.id).length,
+      wishlist: u.wishlist || [],
     }));
     res.json(allUsers);
   });
@@ -306,6 +353,36 @@ async function startServer() {
     res.json(publicUser);
   });
 
+  app.put('/api/customers/:id/wishlist', requireAuth, async (req, res) => {
+    const { productId } = req.body;
+    const user = await UserModel.findOne({ id: req.params.id });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    
+    let wishlist = user.wishlist || [];
+    if (wishlist.includes(productId)) {
+      wishlist = wishlist.filter(id => id !== productId); // Remove if exists
+    } else {
+      wishlist.push(productId); // Add if not
+    }
+    const updatedUser = await UserModel.findOneAndUpdate({ id: req.params.id }, { wishlist }, { new: true }).lean() as any;
+    const { passwordHash, ...publicUser } = updatedUser;
+    res.json(publicUser);
+  });
+
+  app.put('/api/cart', requireAuth, async (req: CustomRequest, res) => {
+    const { cart } = req.body;
+    const updatedUser = await UserModel.findOneAndUpdate(
+      { id: req.user!.id },
+      { cart },
+      { new: true }
+    ).lean();
+    if (!updatedUser) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    res.json(updatedUser.cart);
+  });
+
   // --- PHASE 4: ORDER MANAGEMENT API ---
   app.get('/api/orders', requireAuth, async (req: CustomRequest, res) => {
     if (req.user!.role === 'admin') {
@@ -317,10 +394,20 @@ async function startServer() {
   });
 
   app.post('/api/orders', requireAuth, requireRole(['customer']), async (req: CustomRequest, res) => {
-    const { items, shippingAddress, paymentMethod } = req.body;
+    const { items, shippingAddress, paymentMethod, promoCode } = req.body;
     if (!items || !Array.isArray(items) || items.length === 0 || !shippingAddress) {
       res.status(400).json({ error: 'Order items and shipping address are required' });
       return;
+    }
+
+    // Validate Promo Code
+    if (promoCode) {
+      const cleanPromo = promoCode.trim().toUpperCase();
+      const promo = await PromoModel.findOne({ code: cleanPromo });
+      if (!promo || promo.usedCount >= promo.usageLimit) {
+        res.status(400).json({ error: 'Promo code is invalid or has reached its usage limit.' });
+        return;
+      }
     }
 
     const orderedItems = [];
@@ -348,8 +435,10 @@ async function startServer() {
       totalAmount += (prod.price as number) * Number(reqItem.quantity);
 
       // Decrement product stock
-      prod.stock = (prod.stock as number) - Number(reqItem.quantity);
-      await prod.save();
+      await ProductModel.updateOne(
+        { id: prod.id },
+        { $inc: { stock: -Number(reqItem.quantity) } }
+      );
     }
 
     const newOrder = {
@@ -366,6 +455,11 @@ async function startServer() {
     };
 
     await OrderModel.create(newOrder);
+
+    if (promoCode) {
+      await PromoModel.findOneAndUpdate({ code: promoCode.trim().toUpperCase() }, { $inc: { usedCount: 1 } });
+    }
+
     res.status(201).json(newOrder);
   });
 
@@ -459,6 +553,48 @@ async function startServer() {
 
     await ProjectModel.findOneAndUpdate({ id: req.params.id }, updatedProject);
     res.json(updatedProject);
+  });
+
+  // --- PHASE 6: PROMO CODES API ---
+  app.get('/api/promos', requireAuth, async (req, res) => {
+    res.json(await PromoModel.find().lean());
+  });
+
+  app.post('/api/promos', requireAuth, requireRole(['admin']), async (req, res) => {
+    const { code, discount, usageLimit } = req.body;
+    if (!code || !discount || !usageLimit) {
+      res.status(400).json({ error: 'Promo code, discount, and usage limit are required' });
+      return;
+    }
+    const cleanCode = code.trim().toUpperCase();
+    try {
+      const existing = await PromoModel.findOne({ code: cleanCode }).lean();
+      if (existing) {
+        res.status(400).json({ error: 'This promo code already exists' });
+        return;
+      }
+      const newPromo = {
+        id: 'prm_' + Math.random().toString(36).substr(2, 9),
+        code: cleanCode,
+        discount: Number(discount),
+        usageLimit: Number(usageLimit),
+        usedCount: 0,
+        createdAt: new Date().toISOString()
+      };
+      await PromoModel.create(newPromo);
+      res.status(201).json(newPromo);
+    } catch (e: any) {
+      if (e.code === 11000) {
+        res.status(400).json({ error: 'This promo code already exists' });
+      } else {
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    }
+  });
+
+  app.delete('/api/promos/:id', requireAuth, requireRole(['admin']), async (req, res) => {
+    await PromoModel.findOneAndDelete({ id: req.params.id });
+    res.json({ success: true });
   });
 
   // --- DASHBOARD ANALYTICS API ---

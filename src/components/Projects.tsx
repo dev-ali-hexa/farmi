@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { LayoutGrid, Layers, ArrowRight, Sparkles, Star, Maximize2, Tag } from 'lucide-react';
+import { motion } from 'motion/react';
 
 export default function Projects() {
   const [filter, setFilter] = useState<'All' | 'Living Room' | 'Bedroom' | 'Kitchen' | 'Office'>('All');
@@ -113,9 +114,15 @@ export default function Projects() {
       </div>
 
       {/* Projects Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      <motion.div 
+        initial="hidden"
+        animate="visible"
+        variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+      >
         {filtered.map((p, index) => (
-          <div
+          <motion.div
+            variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}
             key={index}
             className="group bg-white rounded-3xl border border-neutral-200/60 overflow-hidden hover:shadow-lg transition-all duration-300 flex flex-col justify-between"
           >
@@ -162,9 +169,9 @@ export default function Projects() {
                 <span className="text-neutral-950 font-bold">BUDGET: {p.budget}</span>
               </div>
             </div>
-          </div>
+          </motion.div>
         ))}
-      </div>
+      </motion.div>
 
       {/* Call to action card */}
       <div className="relative bg-neutral-900 text-white rounded-3xl p-8 md:p-12 overflow-hidden flex flex-col sm:flex-row items-center sm:justify-between gap-6">

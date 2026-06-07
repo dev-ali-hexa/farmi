@@ -2,8 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   ShoppingCart, LayoutGrid, Layers, Tag, Check, ShoppingBag, Truck, Info, Heart, Search,
   ArrowUpRight, Star, Sliders, ChevronDown, RefreshCw, X, Box, RotateCcw, 
-  Eye, CornerRightUp, Compass, Move
+  Eye, CornerRightUp, Compass, Move, MessageSquare
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { Product, ProductCategory } from '../types.js';
 
 interface ProductCatalogProps {
@@ -13,6 +14,10 @@ interface ProductCatalogProps {
   onOrderNow: (product: Product) => void;
   selectedCategory: ProductCategory | 'All';
   setSelectedCategory: (cat: ProductCategory | 'All') => void;
+  viewProductId?: string | null;
+  clearViewProduct?: () => void;
+  onToggleWishlist?: (productId: string) => void;
+  onAddReview?: (productId: string, rating: number, comment: string) => void;
 }
 
 const CATEGORIES: (ProductCategory | 'All')[] = [
@@ -27,8 +32,15 @@ const CATEGORIES: (ProductCategory | 'All')[] = [
 
 const POPULAR_TAGS = ['Modern', 'Wooden', 'Luxury', 'Minimal', 'Comfort', 'New'];
 
-export default function ProductCatalog({ products, user, onAddToCart, onOrderNow, selectedCategory, setSelectedCategory }: ProductCatalogProps) {
+const staticReviews = [
+  { author: "Michael T.", date: "Oct 12, 2023", rating: 5, text: "Absolutely stunning piece. The wood finish is incredibly smooth and the velvet feels premium." },
+  { author: "Sarah L.", date: "Sep 28, 2023", rating: 5, text: "Delivery was quick and the white-glove assembly was very professional. Highly recommended!" },
+  { author: "David W.", date: "Aug 15, 2023", rating: 4, text: "Great quality, but the color was slightly darker than I expected. Still fits perfectly in my living room." }
+];
+
+export default function ProductCatalog({ products, user, onAddToCart, onOrderNow, selectedCategory, setSelectedCategory, viewProductId, clearViewProduct, onToggleWishlist, onAddReview }: ProductCatalogProps) {
   // Filter state
+  const [minPrice, setMinPrice] = useState<number>(0);
   const [maxPrice, setMaxPrice] = useState<number>(300000);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -41,6 +53,24 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
   const [selectedColor, setSelectedColor] = useState<string>('Beige');
   const [selectedQuantity, setSelectedQuantity] = useState<number>(1);
   const [detailImageIdx, setDetailImageIdx] = useState<number>(0);
+  const [newReviewText, setNewReviewText] = useState('');
+  const [showWishlistToast, setShowWishlistToast] = useState(false);
+  const [wishlistToastMessage, setWishlistToastMessage] = useState('');
+  const toastTimeoutRef = useRef<number | null>(null);
+  const [newReviewRating, setNewReviewRating] = useState(5);
+
+  // Handle external product view request (from Home Page offers)
+  useEffect(() => {
+    if (viewProductId) {
+      const prod = products.find(p => p.id === viewProductId);
+      if (prod) {
+        setSelectedProduct(prod);
+        setDetailImageIdx(0);
+        setActiveDetailTab('Description');
+      }
+      if (clearViewProduct) clearViewProduct();
+    }
+  }, [viewProductId, products, clearViewProduct]);
 
   // Interactive 3D Room planner sandbox states
   const [isometricRoomItems, setIsometricRoomItems] = useState<{
@@ -101,19 +131,42 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
     setActiveSelectedItemIdx(0);
   };
 
-  // Initial Seed reviews data
-  const staticReviews = [
-    { author: "Vikas Sharma", rating: 5, date: "May 12, 2026", text: "Amazing build density! The velvet touch feels luxury-level. Fits perfectly in our minimalist Living Room." },
-    { author: "Anjali Mehta", rating: 5, date: "April 29, 2026", text: "Truly satisfied. Delivery team was incredibly patient, carried the parts to 4th floor, assembled and cleared everything." },
-    { author: "Roger K.", rating: 4, date: "April 15, 2026", text: "Elegant solid American Walnut frames. Rich grain colors. Weighty and stable." }
-  ];
+  const handleSubmitReview = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProduct || !newReviewText.trim() || !onAddReview) return;
+    onAddReview(selectedProduct.id, newReviewRating, newReviewText);
+    setNewReviewText('');
+    setNewReviewRating(5);
+  };
+
+  // Handle wishlist toggle and show toast
+  const handleToggleWishlistWithToast = async (productId: string) => {
+    if (!onToggleWishlist) return;
+
+    // Action perform hone se pehle check karein ki product wishlist me hai ya nahi
+    const wasInWishlist = user?.wishlist?.includes(productId);
+
+    await onToggleWishlist(productId);
+    
+    const product = products.find(p => p && p.id === productId);
+
+    const actionText = wasInWishlist ? 'removed from' : 'added to';
+    setWishlistToastMessage(`${product?.name} ${actionText} your Wishlist.`);
+    setShowWishlistToast(true);
+
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setShowWishlistToast(false);
+    }, 3000); // Hide after 3 seconds
+  }
+
 
   // Perform Catalog Filtering
   const filteredProducts = products.filter(p => {
     // 1. Category matches
     const categoryMatches = selectedCategory === 'All' || p.category === selectedCategory;
     // 2. Max Price bounds
-    const priceMatches = p.price <= maxPrice;
+    const priceMatches = p.price >= minPrice && p.price <= maxPrice;
     // 3. Tag checks (Simulated tags matched via categories or name substrings)
     let tagMatches = true;
     if (activeTag) {
@@ -150,7 +203,12 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
         <div className="absolute inset-0 opacity-40 bg-[url('https://images.unsplash.com/photo-1540518614846-7eded433c457?auto=format&fit=crop&q=80&w=1200')] bg-cover bg-center"></div>
         <div className="absolute inset-0 bg-linear-to-r from-neutral-900/40 via-neutral-900/10 to-transparent"></div>
         
-        <div className="relative max-w-xl space-y-3 z-10">
+        <motion.div 
+          initial={{ opacity: 0, x: -30 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+          className="relative max-w-xl space-y-3 z-10"
+        >
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-mono tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/20">
             FURNIDESIGN PORTFOLIO CREATIVE
           </span>
@@ -160,7 +218,7 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
           <p className="text-xs md:text-sm text-stone-300 leading-relaxed max-w-md">
             Handcrafted local American woodwork line structures, customized velvet textures, and gold premium borders.
           </p>
-        </div>
+        </motion.div>
       </div>
 
       {/* Main Catalog body: Sidebar Filter + Catalog Grid */}
@@ -173,10 +231,11 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
               <Sliders className="w-3.5 h-3.5 text-amber-500" />
               <span>COLLECTION FILTERS</span>
             </span>
-            {(selectedCategory !== 'All' || maxPrice !== 300000 || activeTag !== null) && (
+            {(selectedCategory !== 'All' || minPrice !== 0 || maxPrice !== 300000 || activeTag !== null || searchQuery !== '') && (
               <button
                 onClick={() => {
                   setSelectedCategory('All');
+                  setMinPrice(0);
                   setMaxPrice(300000);
                   setSearchQuery('');
                   setActiveTag(null);
@@ -214,30 +273,28 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
           {/* Brand Pricing Range filter */}
           <div className="space-y-3.5 pt-4 border-t border-stone-100">
             <div className="flex justify-between items-center">
-              <h4 className="font-semibold text-neutral-900">Filter By Price</h4>
-              <div className="flex items-center gap-1">
-                <span className="text-xs font-mono font-bold text-amber-600">₹</span>
+              <h4 className="font-semibold text-neutral-900">Price Range</h4>
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <div className="flex flex-col gap-1 w-full">
+                <span className="text-[10px] text-stone-500 font-semibold">MIN (₹)</span>
+                <input
+                  type="number"
+                  value={minPrice}
+                  onChange={(e) => setMinPrice(Number(e.target.value) || 0)}
+                  className="w-full px-2 py-1.5 text-xs font-mono font-bold border border-stone-200 rounded-md focus:outline-none focus:border-amber-400 bg-stone-50"
+                />
+              </div>
+              <span className="text-stone-300 font-bold mt-4">-</span>
+              <div className="flex flex-col gap-1 w-full">
+                <span className="text-[10px] text-stone-500 font-semibold">MAX (₹)</span>
                 <input
                   type="number"
                   value={maxPrice}
                   onChange={(e) => setMaxPrice(Number(e.target.value) || 0)}
-                  className="w-20 px-2 py-1 text-xs font-mono font-bold border border-stone-200 rounded-md focus:outline-none focus:border-amber-400 bg-stone-50"
+                  className="w-full px-2 py-1.5 text-xs font-mono font-bold border border-stone-200 rounded-md focus:outline-none focus:border-amber-400 bg-stone-50"
                 />
               </div>
-            </div>
-            <input
-              type="range"
-              min="500"
-              max="300000"
-              step="500"
-              value={maxPrice}
-              onChange={(e) => setMaxPrice(Number(e.target.value))}
-              className="w-full accent-neutral-950 cursor-pointer h-1 bg-stone-150 rounded-lg outline-none"
-            />
-            <div className="flex justify-between text-[10px] text-neutral-400 font-mono">
-            <span>₹500</span>
-            <span>₹1,50,000</span>
-            <span>₹3,00,000</span>
             </div>
           </div>
 
@@ -288,6 +345,14 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-11 pr-4 py-2.5 text-sm bg-white border-2 border-stone-200 rounded-xl focus:outline-none focus:border-stone-400 focus:ring-1 focus:ring-stone-400 transition shadow-sm"
               />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3.5 top-3.5 text-stone-400 hover:text-stone-600 transition cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
 
             <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-4">
@@ -321,6 +386,7 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
                 onClick={() => {
                   setSelectedCategory('All');
                   setSearchQuery('');
+                  setMinPrice(0);
                   setMaxPrice(300000);
                   setActiveTag(null);
                 }}
@@ -330,9 +396,15 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <motion.div 
+              initial="hidden"
+              animate="visible"
+              variants={{ visible: { transition: { staggerChildren: 0.05 } } }}
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
+            >
               {sortedProducts.map((prod) => (
-                <div
+                <motion.div
+                  variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}
                   key={prod.id}
                   onClick={() => {
                     setSelectedProduct(prod);
@@ -346,11 +418,29 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
                   {/* Thumbnail area with tags */}
                   <div className="relative aspect-4/3 bg-stone-50 overflow-hidden border-b border-stone-100">
                     <img
-                      src={prod.images[0]}
+                      src={prod.images?.[0] || ''}
                       alt={prod.name}
                       referrerPolicy="no-referrer"
                       className="object-cover w-full h-full group-hover:scale-103 transition-transform duration-500 ease-out"
                     />
+
+                    {/* Offer badge */}
+                    {prod.isOffer && (
+                      <div className="absolute top-3 right-3 bg-red-500 text-white text-[9px] font-bold px-2 py-1 rounded shadow-sm font-mono tracking-wide z-10">
+                        {prod.originalPrice && prod.originalPrice > prod.price 
+                          ? `${Math.round(((prod.originalPrice - prod.price) / prod.originalPrice) * 100)}% OFF DEAL` 
+                          : 'SPECIAL OFFER'}
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleToggleWishlistWithToast(prod.id); }}
+                      title="Toggle Wishlist"
+                      className="absolute bottom-3 right-3 p-2 bg-white/90 backdrop-blur-xs hover:bg-white rounded-full text-rose-500 shadow-sm transition z-10 cursor-pointer"
+                    >
+                      <Heart className={`w-4 h-4 ${user?.wishlist?.includes(prod.id) ? 'fill-rose-500' : ''}`} />
+                    </button>
 
                     {/* Stock rating badges on floating containers */}
                     <div className="absolute top-3 left-3 flex flex-col gap-1 text-[9px] uppercase font-mono font-bold">
@@ -419,9 +509,9 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
                       </span>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           )}
         </section>
       </div>
@@ -456,7 +546,7 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
                   {/* Large Primary detail thumbnail */}
                   <div className="relative aspect-4/3 rounded-2xl overflow-hidden bg-stone-50 border border-stone-200">
                     <img
-                      src={selectedProduct.images[detailImageIdx] || selectedProduct.images[0]}
+                      src={selectedProduct.images?.[detailImageIdx] || selectedProduct.images?.[0] || ''}
                       alt={selectedProduct.name}
                       referrerPolicy="no-referrer"
                       className="object-cover w-full h-full"
@@ -467,7 +557,7 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
                   <div className="flex gap-2.5">
                     {/* Add seed variants images as sub-strips to make it authentic */}
                     {[
-                      selectedProduct.images[0],
+                      selectedProduct.images?.[0] || "",
                       "https://images.unsplash.com/photo-1616486029423-aaa4789e8c9a?auto=format&fit=crop&q=80&w=200",
                       "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&q=80&w=200"
                     ].map((img, idx) => (
@@ -499,7 +589,18 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
                     <h2 className="font-display text-xl md:text-2xl font-bold tracking-tight text-neutral-950">
                       {selectedProduct.name}
                     </h2>
-
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); handleToggleWishlistWithToast(selectedProduct.id); }}
+                      title="Toggle Wishlist"
+                      className={`inline-flex items-center gap-1 text-sm font-semibold p-2 rounded-xl transition ${
+                        user?.wishlist?.includes(selectedProduct.id)
+                          ? 'bg-rose-500 text-white'
+                          : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                      }`}
+                    >
+                      <Heart className={`w-4 h-4 ${user?.wishlist?.includes(selectedProduct.id) ? 'fill-rose-500 text-rose-500' : 'text-rose-500'}`} />
+                    </button>
                     <div className="flex items-center gap-3 pt-1">
                       <span className="text-2xl font-mono font-bold text-red-600 bg-red-50 px-3 py-1 rounded-xl shadow-sm">
                     ₹{selectedProduct.price}
@@ -703,7 +804,32 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
                 {/* TAB CONTENT 3: REVIEWS */}
                 {activeDetailTab === 'Reviews' && (
                   <div className="space-y-4">
-                    {staticReviews.map((rev, index) => (
+                    {/* Add Review Form */}
+                    <form onSubmit={handleSubmitReview} className="p-4 bg-white rounded-2xl border border-stone-200 space-y-3 mb-6">
+                      <h4 className="font-semibold text-neutral-900 text-sm">Write a Review</h4>
+                      <div className="flex gap-2">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button type="button" key={star} onClick={() => setNewReviewRating(star)} className="cursor-pointer">
+                            <Star className={`w-5 h-5 ${newReviewRating >= star ? 'fill-amber-500 text-amber-500' : 'text-stone-300'}`} />
+                          </button>
+                        ))}
+                      </div>
+                      <textarea
+                        value={newReviewText}
+                        onChange={(e) => setNewReviewText(e.target.value)}
+                        placeholder="Share your thoughts about this piece..."
+                        required
+                        className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-amber-500 text-xs"
+                        rows={3}
+                      />
+                      <button type="submit" className="px-4 py-2 bg-neutral-950 text-white rounded-xl text-xs font-semibold hover:bg-neutral-800 transition cursor-pointer">
+                        Submit Review
+                      </button>
+                    </form>
+                    
+                    {(selectedProduct.reviews && selectedProduct.reviews.length > 0 
+                      ? selectedProduct.reviews.map(r => ({ author: r.userName, date: r.date, rating: r.rating, text: r.comment })) 
+                      : staticReviews).map((rev, index) => (
                       <div key={index} className="p-4 bg-stone-50 rounded-2xl border border-stone-100 space-y-2 text-xs">
                         <div className="flex justify-between items-center">
                           <span className="font-bold text-neutral-950 font-sans">{rev.author}</span>
@@ -867,6 +993,18 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
           </div>
         </div>
       )}
+
+      {/* Wishlist Toast Notification */}
+      {showWishlistToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-neutral-900 text-white px-5 py-3 rounded-full shadow-lg text-xs font-semibold flex items-center gap-2 animate-[fadeInUp_0.3s_ease-out] z-50">
+          <Heart className="w-4 h-4 text-rose-400 fill-rose-400" />
+          <span>{wishlistToastMessage}</span>
+          <button onClick={() => setShowWishlistToast(false)} className="ml-2 text-neutral-300 hover:text-white transition">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
     </div>
   );
 }

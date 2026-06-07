@@ -2,13 +2,15 @@ import React, { useState } from 'react';
 import { 
   Plus, Edit2, Trash2, Users, ShoppingCart, Package, Palette, DollarSign, 
   Search, ShieldAlert, CheckCircle, Clock, Truck, Eye, ArrowRight, UserPlus, FileText
+  , Ticket, Heart, Download
 } from 'lucide-react';
-import { Product, ProductCategory, Order, OrderStatus, User } from '../types.js';
+import { Product, ProductCategory, Order, OrderStatus, User, PromoCode } from '../types.js';
 
 interface AdminPanelProps {
   products: Product[];
   customers: User[];
   orders: Order[];
+  promos: PromoCode[];
   projectsCount: number;
   onAddProduct: (prod: Omit<Product, 'id' | 'createdAt'>) => Promise<void>;
   onEditProduct: (id: string, prod: Partial<Product>) => Promise<void>;
@@ -16,12 +18,15 @@ interface AdminPanelProps {
   onUpdateOrderStatus: (id: string, status: OrderStatus) => Promise<void>;
   onAddCustomer: (cust: any) => Promise<void>;
   onEditCustomer: (id: string, cust: any) => Promise<void>;
+  onAddPromo: (code: string, discount: number, limit: number) => Promise<void>;
+  onDeletePromo: (id: string) => Promise<void>;
 }
 
 export default function AdminPanel({
   products,
   customers,
   orders,
+  promos,
   projectsCount,
   onAddProduct,
   onEditProduct,
@@ -29,8 +34,10 @@ export default function AdminPanel({
   onUpdateOrderStatus,
   onAddCustomer,
   onEditCustomer,
+  onAddPromo,
+  onDeletePromo,
 }: AdminPanelProps) {
-  const [subTab, setSubTab] = useState<'dashboard' | 'products' | 'customers' | 'orders'>('dashboard');
+  const [subTab, setSubTab] = useState<'dashboard' | 'products' | 'customers' | 'orders' | 'promos'>('dashboard');
 
   // Search/Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -65,6 +72,21 @@ export default function AdminPanel({
   const [customerAddress, setCustomerAddress] = useState('');
   const [customerRole, setCustomerRole] = useState<'admin' | 'designer' | 'customer'>('customer');
 
+  // Promo states
+  const [promoCode, setPromoCode] = useState('');
+  const [promoDiscount, setPromoDiscount] = useState('');
+  const [promoLimit, setPromoLimit] = useState('');
+  const [promoError, setPromoError] = useState('');
+  const [promoSuccess, setPromoSuccess] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'All' | OrderStatus>('All');
+
+  // Safe Date formatter to prevent "Invalid time value" white screen crashes
+  const formatSafeDate = (d: any) => {
+    if (!d) return 'Unknown Date';
+    const date = new Date(d);
+    return isNaN(date.getTime()) ? 'Unknown Date' : date.toLocaleDateString();
+  };
+
   // --- Products actions ---
   const handleOpenAddProduct = () => {
     setIsEditingProduct(false);
@@ -89,7 +111,7 @@ export default function AdminPanel({
     setIsOfferProduct(!!prod.isOffer);
     setProductStock(prod.stock.toString());
     setProductDescription(prod.description);
-    setProductImageUrl(prod.images[0] || '');
+    setProductImageUrl(prod.images?.[0] || '');
   };
 
   const handleProductSubmit = async (e: React.FormEvent) => {
@@ -184,6 +206,46 @@ export default function AdminPanel({
     }
   };
 
+  const handlePromoSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPromoError('');
+    setPromoSuccess('');
+    try {
+      await onAddPromo(promoCode, Number(promoDiscount), Number(promoLimit));
+      setPromoSuccess('Promo Code created successfully!');
+      setPromoCode('');
+      setPromoDiscount('');
+      setPromoLimit('');
+      setTimeout(() => setPromoSuccess(''), 3000);
+    } catch (err: any) {
+      setPromoError(err.message || 'Failed to create promo code');
+    }
+  };
+
+  // Export Orders Data to CSV
+  const handleExportOrdersCSV = () => {
+    if (orders.length === 0) return;
+    
+    const headers = ['Order ID', 'Customer Name', 'Items (Qty)', 'Total Amount (Rs)', 'Status', 'Date', 'Shipping Address'];
+    const rows = orders.map(o => [
+      o.id,
+      `"${o.customerName}"`,
+      `"${(o.items || []).map(i => `${i.name} (x${i.quantity})`).join(' | ')}"`,
+      o.totalAmount,
+      o.status,
+      formatSafeDate(o.createdAt),
+      `"${o.shippingAddress}"`
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `FurniDesign_Orders_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
   // Status check utilities
   const getOrderStatusPill = (status: OrderStatus) => {
     switch (status) {
@@ -197,6 +259,8 @@ export default function AdminPanel({
         return 'bg-emerald-100 text-emerald-800 font-bold';
     }
   };
+
+  const filteredOrders = orders.filter(o => o && o.id && (orderStatusFilter === 'All' || o.status === orderStatusFilter));
 
   return (
     <div className="space-y-8 animate-[fadeIn_0.3s_ease-out]">
@@ -213,7 +277,7 @@ export default function AdminPanel({
 
         {/* Workspace controller */}
         <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-neutral-200">
-          {(['dashboard', 'products', 'customers', 'orders'] as const).map((tab) => (
+          {(['dashboard', 'products', 'customers', 'orders', 'promos'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setSubTab(tab)}
@@ -516,19 +580,19 @@ export default function AdminPanel({
                 </thead>
                 <tbody className="divide-y divide-neutral-100 text-xs">
                   {products
-                    .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                    .filter(p => p && (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()))
                     .map((p) => (
                       <tr key={p.id} className="hover:bg-neutral-50/45 transition">
                         <td className="p-4 flex items-center gap-3">
                           <img
-                            src={p.images[0]}
+                            src={p.images?.[0] || ''}
                             alt={p.name}
                             referrerPolicy="no-referrer"
                             className="w-10 h-10 object-cover rounded-lg shrink-0 border border-neutral-200 bg-neutral-100"
                           />
                           <div>
                             <span className="font-semibold text-neutral-900 text-xs block">{p.name}</span>
-                            <span className="text-[10px] font-mono text-neutral-400">REF: {p.id.toUpperCase()}</span>
+                            <span className="text-[10px] font-mono text-neutral-400">REF: {p.id?.toUpperCase()}</span>
                           </div>
                         </td>
                         <td className="p-4">
@@ -580,7 +644,7 @@ export default function AdminPanel({
       {/* SUB-SECTION 3: USER & CUSTOMER MANAGEMENT */}
       {subTab === 'customers' && (() => {
         // Find fresh customer data in list so blocks and counts sync dynamically
-        const currentSelectedUser = selectedCustomer ? customers.find(c => c.id === selectedCustomer.id) || selectedCustomer : null;
+        const currentSelectedUser = selectedCustomer ? customers.find(c => c && c.id === selectedCustomer.id) || selectedCustomer : null;
 
         return (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -618,7 +682,7 @@ export default function AdminPanel({
 
               <div className="divide-y divide-neutral-100 overflow-y-auto max-h-[500px]">
                 {customers
-                  .filter(c => c.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) || c.email.toLowerCase().includes(customerSearchQuery.toLowerCase()))
+                  .filter(c => c && ((c.name || '').toLowerCase().includes(customerSearchQuery.toLowerCase()) || (c.email || '').toLowerCase().includes(customerSearchQuery.toLowerCase())))
                   .map((c) => (
                   <div
                     key={c.id}
@@ -768,7 +832,7 @@ export default function AdminPanel({
                         {currentSelectedUser.name}
                       </h3>
                       <p className="text-[10px] text-neutral-400 font-mono">
-                        REF CONSOLE PROFILE: {currentSelectedUser.id.toUpperCase()}
+                        REF CONSOLE PROFILE: {currentSelectedUser.id?.toUpperCase() || 'UNKNOWN'}
                       </p>
                     </div>
                     
@@ -818,7 +882,7 @@ export default function AdminPanel({
                     </div>
                     <div className="bg-neutral-50/50 p-3.5 rounded-xl border border-neutral-100 space-y-1 min-w-[85px]">
                       <span className="text-neutral-400 block font-mono font-semibold">TOTAL ORDERS</span>
-                      <strong className="text-neutral-900 text-sm font-bold block">{orders.filter(o => o.customerId === currentSelectedUser.id).length} Orders</strong>
+                      <strong className="text-neutral-900 text-sm font-bold block">{orders.filter(o => o && o.customerId === currentSelectedUser?.id).length} Orders</strong>
                     </div>
                     <div className="bg-neutral-50/50 p-3.5 rounded-xl border border-neutral-100 space-y-1 min-w-[70px]">
                       <span className="text-neutral-400 block font-mono font-semibold">STATUS</span>
@@ -835,6 +899,39 @@ export default function AdminPanel({
                     <strong className="text-neutral-800 leading-snug block">{currentSelectedUser.address || 'Not provided'}</strong>
                   </div>
 
+                  {/* Sub-section: Favourite Products (Wishlist) */}
+                  <div className="space-y-3.5">
+                    <div className="flex items-center gap-2">
+                      <Heart className="w-4 h-4 text-rose-500" />
+                      <span className="text-xs font-bold font-mono text-neutral-600">FAVOURITE PRODUCTS ({currentSelectedUser.wishlist?.length || 0})</span>
+                    </div>
+
+                    {currentSelectedUser.wishlist && currentSelectedUser.wishlist.length > 0 ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[250px] overflow-y-auto pr-2">
+                        {products
+                          .filter(p => p && Array.isArray(currentSelectedUser.wishlist) && currentSelectedUser.wishlist.includes(p.id))
+                          .map(prod => (
+                            <div key={prod.id} className="p-3 bg-neutral-50 rounded-xl border border-neutral-100 flex items-center gap-2">
+                              <img
+                                src={prod.images?.[0] || ''}
+                                alt={prod.name}
+                                referrerPolicy="no-referrer"
+                                className="w-8 h-8 object-cover rounded-md shrink-0 border border-neutral-200"
+                              />
+                              <div className="space-y-0.5">
+                                <span className="text-[10px] font-semibold text-neutral-900 block line-clamp-1">{prod.name}</span>
+                                <span className="text-[9px] font-mono text-neutral-500">₹{Number(prod.price) || 0}</span>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-neutral-400 bg-neutral-50 p-4 rounded-xl text-center border border-dashed">
+                        No favourite products added yet.
+                      </p>
+                    )}
+                  </div>
+
                   {/* Sub-section: Customer order history (Phase 3 spec!) */}
                   <div className="space-y-3.5">
                     <div className="flex items-center gap-2">
@@ -842,19 +939,19 @@ export default function AdminPanel({
                       <span className="text-xs font-bold font-mono text-neutral-600">HISTORIC PURCHASES & DISPATCH LOGS</span>
                     </div>
 
-                    {orders.filter(o => o.customerId === currentSelectedUser.id).length === 0 ? (
+                    {orders.filter(o => o && o.customerId === currentSelectedUser?.id).length === 0 ? (
                       <p className="text-xs text-neutral-400 bg-neutral-50 p-4 rounded-xl text-center border border-dashed">
                         No purchases registered for this profile yet.
                       </p>
                     ) : (
                       <div className="space-y-3 max-h-[250px] overflow-y-auto">
                         {orders
-                          .filter(o => o.customerId === currentSelectedUser.id)
+                          .filter(o => o && o.customerId === currentSelectedUser?.id)
                           .map((order) => (
                             <div key={order.id} className="p-4 border border-neutral-100 hover:border-neutral-200 transition rounded-xl space-y-2">
                               <div className="flex items-center justify-between">
                                 <span className="text-[10px] font-mono font-bold text-neutral-500">
-                                  ID: {order.id.toUpperCase()}
+                                  ID: {order.id?.toUpperCase() || 'UNKNOWN'}
                                 </span>
                                 <span className={`px-2 py-0.5 text-[9px] font-mono tracking-wider font-bold rounded-full ${getOrderStatusPill(order.status)}`}>
                                   {order.status}
@@ -863,13 +960,13 @@ export default function AdminPanel({
 
                               <div className="pt-1.5 flex justify-between text-xs font-medium">
                                 <span className="text-neutral-600">
-                                  {order.items.map(item => `${item.name} (x${item.quantity})`).join(', ')}
+                                  {Array.isArray(order.items) ? order.items.map(item => `${item?.name || 'Unknown'} (x${item?.quantity || 1})`).join(', ') : 'No items'}
                                 </span>
-                                <span className="font-mono text-neutral-900">₹{order.totalAmount}</span>
+                                <span className="font-mono text-neutral-900">₹{Number(order.totalAmount) || 0}</span>
                               </div>
 
                               <p className="text-[10px] text-neutral-400 pt-1 border-t border-dashed border-neutral-100">
-                                Logged on {new Date(order.createdAt).toLocaleDateString()} via {order.paymentMethod}
+                                Logged on {formatSafeDate(order.createdAt || Date.now())} via {order.paymentMethod || 'Unknown'}
                               </p>
                             </div>
                           ))}
@@ -892,15 +989,43 @@ export default function AdminPanel({
       {/* SUB-SECTION 4: ORDER DISPATCH PIPELINE */}
       {subTab === 'orders' && (
         <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-2xs">
-          <div className="p-4 border-b border-neutral-100 bg-neutral-50 flex items-center justify-between">
-            <span className="text-xs font-bold font-mono text-neutral-600">PIPELINE TRACKING CONTROLS</span>
-            <span className="text-[10px] text-neutral-500 font-mono">{orders.length} active dispatches</span>
+          <div className="p-4 border-b border-neutral-100 bg-neutral-50 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold font-mono text-neutral-600">PIPELINE TRACKING CONTROLS</span>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] text-neutral-500 font-mono">{orders.length} active dispatches</span>
+                <button
+                  onClick={handleExportOrdersCSV}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 text-white rounded-lg text-[10px] font-bold hover:bg-neutral-800 transition cursor-pointer"
+                >
+                  <Download className="w-3 h-3" />
+                  <span>Export CSV</span>
+                </button>
+              </div>
+            </div>
+            
+            {/* Order Status Filters */}
+            <div className="flex gap-2 overflow-x-auto scrollbar-none pb-1">
+              {(['All', 'Pending', 'Processing', 'Shipped', 'Delivered'] as const).map((status) => (
+                <button
+                  key={status}
+                  onClick={() => setOrderStatusFilter(status)}
+                  className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg border transition-all whitespace-nowrap cursor-pointer ${
+                    orderStatusFilter === status
+                      ? 'bg-neutral-900 text-white border-neutral-900 shadow-sm'
+                      : 'bg-white text-neutral-500 border-neutral-200 hover:border-neutral-300'
+                  }`}
+                >
+                  {status} ({status === 'All' ? orders.length : orders.filter(o => o.status === status).length})
+                </button>
+              ))}
+            </div>
           </div>
 
-          {orders.length === 0 ? (
+          {filteredOrders.length === 0 ? (
             <div className="p-12 text-center text-neutral-400">
               <ShoppingCart className="w-8 h-8 text-neutral-300 mx-auto mb-3" />
-              <p className="text-sm font-semibold text-neutral-700">No orders filed by customers yet</p>
+              <p className="text-sm font-semibold text-neutral-700">No {orderStatusFilter !== 'All' ? orderStatusFilter.toLowerCase() : ''} orders found</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -916,15 +1041,15 @@ export default function AdminPanel({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100 text-xs text-neutral-700">
-                  {orders.map((o) => (
-                    <tr key={o.id} className="hover:bg-neutral-50/30 transition">
+                  {filteredOrders.map((o) => (
+                    <tr key={o.id || Math.random()} className="hover:bg-neutral-50/30 transition">
                       <td className="p-4 font-mono font-bold text-neutral-500">
-                        {o.id.toUpperCase()}
+                        {o.id?.toUpperCase() || 'UNKNOWN'}
                       </td>
                       <td className="p-4">
                       <button
                         onClick={() => {
-                          const cust = customers.find(c => c.id === o.customerId);
+                          const cust = customers.find(c => c && c.id === o.customerId);
                           if (cust) {
                             setSelectedCustomer(cust);
                             setIsCreatingCustomer(false);
@@ -937,17 +1062,19 @@ export default function AdminPanel({
                       >
                         {o.customerName}
                       </button>
-                        <span className="text-[10px] text-neutral-400 block font-mono">{new Date(o.createdAt).toLocaleDateString()}</span>
+                        <span className="text-[10px] text-neutral-400 block font-mono">{formatSafeDate(o.createdAt)}</span>
                       </td>
                       <td className="p-4 font-medium max-w-xs">
-                        {o.items.map((it, idx) => (
+                        {Array.isArray(o.items) ? o.items.map((it, idx) => (
                           <div key={idx} className="line-clamp-1">
-                            {it.name} <strong className="text-neutral-500 font-normal">({it.quantity}x)</strong>
+                            {it?.name || 'Unknown Item'} <strong className="text-neutral-500 font-normal">({it?.quantity || 1}x)</strong>
                           </div>
-                        ))}
+                        )) : (
+                          <span className="text-neutral-400 text-[10px]">No items</span>
+                        )}
                       </td>
                       <td className="p-4 font-mono font-semibold text-neutral-950">
-                        ₹{o.totalAmount}
+                        ₹{Number(o.totalAmount) || 0}
                       </td>
                       <td className="p-4 max-w-xs text-neutral-500 truncate" title={o.shippingAddress}>
                         {o.shippingAddress}
@@ -974,6 +1101,116 @@ export default function AdminPanel({
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* SUB-SECTION 5: PROMO CODES MANAGEMENT */}
+      {subTab === 'promos' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="bg-white rounded-2xl border border-neutral-200 p-6 space-y-4 h-fit">
+            <h3 className="font-display font-bold text-neutral-900 text-sm">Create Promo Code</h3>
+            <p className="text-[10px] text-neutral-400 font-mono uppercase tracking-wide">Generate discount vouchers</p>
+            
+            {promoSuccess && (
+              <div className="p-3 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-semibold">
+                {promoSuccess}
+              </div>
+            )}
+            {promoError && (
+              <div className="p-3 bg-red-50 text-red-700 border border-red-200 rounded-xl text-xs font-semibold">
+                {promoError}
+              </div>
+            )}
+
+            <form onSubmit={handlePromoSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-neutral-700 mb-1">Coupon Code</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="E.g., WINTER50"
+                  value={promoCode}
+                  onChange={(e) => setPromoCode(e.target.value.toUpperCase().trim())}
+                  className="w-full text-xs px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl focus:outline-none uppercase font-mono tracking-widest"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1">Discount (%)</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    max="100"
+                    placeholder="20"
+                    value={promoDiscount}
+                    onChange={(e) => setPromoDiscount(e.target.value)}
+                    className="w-full text-xs px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1">Max Users Limit</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    placeholder="100"
+                    value={promoLimit}
+                    onChange={(e) => setPromoLimit(e.target.value)}
+                    className="w-full text-xs px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl focus:outline-none"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                className="w-full bg-neutral-950 hover:bg-neutral-850 text-white font-semibold text-xs py-2.5 px-4 rounded-xl transition cursor-pointer"
+              >
+                Generate Promo Code
+              </button>
+            </form>
+          </div>
+
+          <div className="lg:col-span-2 bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-2xs">
+            <div className="p-4 border-b border-neutral-100 bg-neutral-50">
+              <span className="text-xs font-bold font-mono text-neutral-600">ACTIVE PROMOTIONS</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-neutral-100 bg-neutral-50/50 text-[10px] font-mono tracking-wider text-neutral-400">
+                    <th className="p-4 uppercase font-bold">Code Name</th>
+                    <th className="p-4 uppercase font-bold text-center">Discount</th>
+                    <th className="p-4 uppercase font-bold text-center">Claims Limit</th>
+                    <th className="p-4 uppercase font-bold text-center">Used By</th>
+                    <th className="p-4 uppercase font-bold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100 text-xs">
+                  {promos.filter(p => p && p.id).map((p) => (
+                    <tr key={p.id || Math.random()} className="hover:bg-neutral-50/45 transition">
+                      <td className="p-4 font-mono font-bold tracking-widest text-emerald-600">{p.code}</td>
+                      <td className="p-4 text-center font-bold">{p.discount}%</td>
+                      <td className="p-4 text-center font-mono">{p.usageLimit} Max</td>
+                      <td className="p-4 text-center">
+                        <span className={`px-2 py-0.5 rounded-full font-bold font-mono text-[10px] ${p.usedCount >= p.usageLimit ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                          {p.usedCount} Claimed
+                        </span>
+                      </td>
+                      <td className="p-4 text-right">
+                        <button
+                          onClick={() => onDeletePromo(p.id)}
+                          className="p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg cursor-pointer transition"
+                          title="Delete Code"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
     </div>

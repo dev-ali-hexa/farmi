@@ -6,6 +6,11 @@ export interface BaseEntity {
   updatedAt?: string;
 }
 
+export interface CartItem {
+  productId: string;
+  quantity: number;
+}
+
 export interface User extends BaseEntity {
   email: string;
   name: string;
@@ -13,10 +18,20 @@ export interface User extends BaseEntity {
   phone?: string;
   address?: string;
   isBlocked?: boolean;
+  wishlist?: string[];
+  cart?: CartItem[];
 }
 
 export interface DbUser extends User {
   passwordHash: string;
+}
+
+export interface Review {
+  userId: string;
+  userName: string;
+  rating: number;
+  comment: string;
+  date: string;
 }
 
 export type ProductCategory = 'Living Room' | 'Bedroom' | 'Kitchen' | 'Office' | 'Outdoor' | 'Decor';
@@ -30,6 +45,7 @@ export interface Product extends BaseEntity {
   description: string;
   images: string[];
   stock: number;
+  reviews?: Review[];
 }
 
 export type OrderStatus = 'Pending' | 'Processing' | 'Shipped' | 'Delivered';
@@ -49,6 +65,7 @@ export interface Order extends BaseEntity {
   status: OrderStatus;
   shippingAddress: string;
   paymentMethod: string;
+  promoCode?: string;
   updatedAt: string;
 }
 
@@ -69,6 +86,15 @@ export interface Project extends BaseEntity {
   notes?: string;
   designUrls?: string[];
   updatedAt: string;
+}
+
+export interface PromoCode {
+  id: string;
+  code: string;
+  discount: number;
+  usageLimit: number;
+  usedCount: number;
+  createdAt: string;
 }
 
 export interface AuthResponse {

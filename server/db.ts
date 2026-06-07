@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
-import { DbUser, Product, Order, Project, UserRole, ProductCategory, OrderStatus, ProjectStatus } from '../src/types.js';
+import { DbUser, Product, Order, Project, UserRole, ProductCategory, OrderStatus, ProjectStatus, PromoCode } from '../src/types.js';
 
 // --- MongoDB Connection setup ---
 export const connectDB = async () => {
@@ -22,6 +22,12 @@ export const connectDB = async () => {
 
 // --- Mongoose Schemas ---
 
+// Cart Item Schema
+const cartItemSchema = new mongoose.Schema({
+  productId: { type: String, required: true },
+  quantity: { type: Number, required: true }
+}, { _id: false });
+
 // User Schema
 const userSchema = new mongoose.Schema<DbUser>({
   id: { type: String, required: true, unique: true },
@@ -33,7 +39,9 @@ const userSchema = new mongoose.Schema<DbUser>({
   createdAt: { type: String, required: true },
   updatedAt: String,
   passwordHash: { type: String, required: true },
-  isBlocked: { type: Boolean, default: false }
+  isBlocked: { type: Boolean, default: false },
+  cart: { type: [cartItemSchema], default: [] },
+  wishlist: { type: [String], default: [] }
 });
 
 // Product Schema
@@ -93,11 +101,22 @@ const projectSchema = new mongoose.Schema<Project>({
   updatedAt: { type: String, required: true }
 });
 
+// PromoCode Schema
+const promoSchema = new mongoose.Schema<PromoCode>({
+  id: { type: String, required: true, unique: true },
+  code: { type: String, required: true, unique: true },
+  discount: { type: Number, required: true },
+  usageLimit: { type: Number, required: true },
+  usedCount: { type: Number, default: 0 },
+  createdAt: { type: String, required: true }
+});
+
 // --- Models ---
 export const UserModel = mongoose.model<DbUser>('User', userSchema);
 export const ProductModel = mongoose.model<Product>('Product', productSchema);
 export const OrderModel = mongoose.model<Order>('Order', orderSchema);
 export const ProjectModel = mongoose.model<Project>('Project', projectSchema);
+export const PromoModel = mongoose.model<PromoCode>('PromoCode', promoSchema);
 
 export const seedDB = async () => {
   const count = await UserModel.countDocuments();

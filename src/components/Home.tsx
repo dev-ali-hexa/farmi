@@ -1,5 +1,6 @@
 import React from 'react';
 import { Sofa, Compass, ShieldCheck, Clock, Award, Users, ThumbsUp, Calendar, ArrowRight, Star, Heart, Check, Play, MapPin, Phone, Mail, Sparkles } from 'lucide-react';
+import { motion } from 'motion/react';
 import { Product } from '../types.js';
 
 interface HomeProps {
@@ -9,6 +10,7 @@ interface HomeProps {
   onLoginClick: () => void;
   user: any;
   onCategorySelect: (cat: string) => void;
+  onProductClick: (id: string) => void;
 }
 
 export default function Home({
@@ -17,7 +19,8 @@ export default function Home({
   onAddToCart,
   onLoginClick,
   user,
-  onCategorySelect
+  onCategorySelect,
+  onProductClick
 }: HomeProps) {
   const offerProducts = products.filter(p => p.isOffer);
 
@@ -30,7 +33,12 @@ export default function Home({
         {/* Vignette - Lightened to reduce black blur */}
         <div className="absolute inset-0 bg-linear-to-r from-neutral-900/40 via-neutral-900/10 to-transparent"></div>
         
-        <div className="relative max-w-2xl space-y-6 z-10">
+        <motion.div 
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+          className="relative max-w-2xl space-y-6 z-10"
+        >
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/30">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
             <span>STYLE • COMFORT • ELEGANCE</span>
@@ -65,7 +73,7 @@ export default function Home({
               <span>Book Consultation</span>
             </button>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* EXCLUSIVE OFFERS SECTION */}
@@ -79,10 +87,22 @@ export default function Home({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <motion.div 
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-50px" }}
+            variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {offerProducts.map((prod) => (
-              <div key={prod.id} className="group bg-white rounded-3xl border border-red-100 overflow-hidden shadow-xs hover:shadow-lg hover:border-red-300 transition flex flex-col h-full">
-                <div className="relative aspect-square overflow-hidden bg-neutral-50">
+              <motion.div 
+                variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}
+                key={prod.id} 
+                className="group bg-white rounded-3xl border border-red-100 overflow-hidden shadow-xs hover:shadow-lg hover:border-red-300 transition flex flex-col h-full"
+              >
+                <div 
+                  className="relative aspect-square overflow-hidden bg-neutral-50 cursor-pointer"
+                  onClick={() => onProductClick(prod.id)}
+                >
                   <img src={prod.images[0]} alt={prod.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
                   <div className="absolute top-3 left-3 bg-red-500 text-white text-[9px] font-bold px-2 py-1 rounded shadow-sm font-mono tracking-wide">
                     {prod.originalPrice && prod.originalPrice > prod.price 
@@ -107,12 +127,12 @@ export default function Home({
                       )}
                       <span className="text-lg font-bold text-red-600 font-mono leading-none">₹{prod.price}</span>
                     </div>
-                    <button onClick={() => { setActiveTab('products'); onCategorySelect(prod.category); }} className="text-xs font-bold text-neutral-900 hover:text-red-600 underline">View</button>
+                    <button onClick={() => onProductClick(prod.id)} className="text-xs font-bold text-neutral-900 hover:text-red-600 underline cursor-pointer">View</button>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       )}
 
@@ -124,7 +144,12 @@ export default function Home({
           <p className="text-xs text-neutral-500">Pick from our state-of-the-art selections handpicked by award-winning interior designers.</p>
         </div>
         
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <motion.div 
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
+          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           {[
             { name: "Living Room", icon: Sofa, image: "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&q=80&w=200", cat: "Living Room" },
             { name: "Bedroom", icon: Sofa, image: "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&q=80&w=200", cat: "Bedroom" },
@@ -135,7 +160,9 @@ export default function Home({
           ].map((c) => {
             const count = products.filter(p => p.category === c.cat).length;
             return (
-              <div
+              <motion.div
+                variants={{ hidden: { opacity: 0, scale: 0.9 }, visible: { opacity: 1, scale: 1 } }}
+                transition={{ duration: 0.4 }}
                 key={c.name}
                 onClick={() => onCategorySelect(c.cat)}
                 className="bg-white border border-neutral-100 rounded-2xl p-4 flex flex-col items-center text-center cursor-pointer hover:border-amber-400 hover:shadow-xs transition-all group"
@@ -145,10 +172,10 @@ export default function Home({
                 </div>
                 <h4 className="text-xs font-bold text-neutral-900 group-hover:text-amber-600 transition">{c.name}</h4>
                 <span className="text-[10px] text-neutral-400 font-mono mt-0.5">{count} {count === 1 ? 'product' : 'products'}</span>
-              </div>
+              </motion.div>
             );
           })}
-        </div>
+        </motion.div>
       </div>
     </div>
   );
