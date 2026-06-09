@@ -70,6 +70,7 @@ async function startServer() {
         isBlocked: !!latestUser.isBlocked,
         wishlist: latestUser.wishlist,
         cart: latestUser.cart || [],
+        furniCoins: latestUser.furniCoins || 0,
       };
       next();
     } catch (e) {
@@ -98,93 +99,106 @@ async function startServer() {
 
   // --- PHASE 1: AUTHENTICATION API ---
   app.post('/api/auth/register', authLimiter, async (req, res) => {
-    const { email, password, name, role, phone, address } = req.body;
-    if (!email || !password || !name) {
-      res.status(400).json({ error: 'Email, password, and name are required' });
-      return;
+    try {
+      const { email, password, name, role, phone, address } = req.body;
+      if (!email || !password || !name || !phone) {
+        res.status(400).json({ error: 'Email, password, name, and phone number are required' });
+        return;
+      }
+  
+      const existing = await UserModel.findOne({ email: email.toLowerCase() }).lean();
+      if (existing) {
+        res.status(400).json({ error: 'User with this email already exists' });
+        return;
+      }
+  
+      const salt = bcrypt.genSaltSync(10);
+      const passwordHash = bcrypt.hashSync(password, salt);
+      const userId = 'usr_' + Math.random().toString(36).substr(2, 9);
+      const selectedRole: UserRole = role || 'customer';
+  
+      const newUser = {
+        id: userId,
+        email: email.toLowerCase(),
+        name,
+        role: selectedRole,
+        phone,
+        address,
+        createdAt: new Date().toISOString(),
+        passwordHash,
+        cart: [],
+        wishlist: [],
+        furniCoins: 0,
+      };
+  
+      await UserModel.create(newUser);
+  
+      const publicUser: User = {
+        id: newUser.id,
+        email: newUser.email,
+        name: newUser.name,
+        role: newUser.role,
+        phone: newUser.phone,
+        address: newUser.address,
+        createdAt: newUser.createdAt,
+        cart: newUser.cart,
+        wishlist: newUser.wishlist,
+        furniCoins: newUser.furniCoins,
+      };
+  
+      const token = jwt.sign(publicUser, JWT_SECRET, { expiresIn: '7d' });
+      res.status(201).json({ token, user: publicUser });
+    } catch (error) {
+      console.error('Registration Error:', error);
+      res.status(500).json({ error: 'Database connection failed. Please try again.' });
     }
-
-    const existing = await UserModel.findOne({ email: email.toLowerCase() }).lean();
-    if (existing) {
-      res.status(400).json({ error: 'User with this email already exists' });
-      return;
-    }
-
-    const salt = bcrypt.genSaltSync(10);
-    const passwordHash = bcrypt.hashSync(password, salt);
-    const userId = 'usr_' + Math.random().toString(36).substr(2, 9);
-    const selectedRole: UserRole = role || 'customer';
-
-    const newUser = {
-      id: userId,
-      email: email.toLowerCase(),
-      name,
-      role: selectedRole,
-      phone,
-      address,
-      createdAt: new Date().toISOString(),
-      passwordHash,
-      cart: [],
-      wishlist: [],
-    };
-
-    await UserModel.create(newUser);
-
-    const publicUser: User = {
-      id: newUser.id,
-      email: newUser.email,
-      name: newUser.name,
-      role: newUser.role,
-      phone: newUser.phone,
-      address: newUser.address,
-      createdAt: newUser.createdAt,
-      cart: newUser.cart,
-      wishlist: newUser.wishlist,
-    };
-
-    const token = jwt.sign(publicUser, JWT_SECRET, { expiresIn: '7d' });
-    res.status(201).json({ token, user: publicUser });
   });
 
   app.post('/api/auth/login', authLimiter, async (req, res) => {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      res.status(400).json({ error: 'Email and password are required' });
-      return;
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) {
+        res.status(400).json({ error: 'Email and password are required' });
+        return;
+      }
+  
+      const user = await UserModel.findOne({ email: email.toLowerCase() }).lean();
+      if (!user) {
+        res.status(401).json({ error: 'Invalid email or password' });
+        return;
+      }
+  
+      const valid = bcrypt.compareSync(password, user.passwordHash);
+      if (!valid) {
+        res.status(401).json({ error: 'Invalid email or password' });
+        return;
+      }
+  
+      if (user.isBlocked) {
+        res.status(403).json({ error: 'This user account has been blocked by an administrator.' });
+        return;
+      }
+  
+      const publicUser: User = {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        phone: user.phone,
+        address: user.address,
+        createdAt: user.createdAt,
+        isBlocked: !!user.isBlocked,
+        cart: user.cart || [],
+        wishlist: user.wishlist || [],
+        furniCoins: user.furniCoins || 0,
+      };
+  
+      const token = jwt.sign(publicUser, JWT_SECRET, { expiresIn: '7d' });
+      res.json({ token, user: publicUser });
+    } catch (error) {
+      console.error('Login Error:', error);
+      res.status(500).json({ error: 'Database connection failed. Please check your internet/MongoDB.' });
     }
-
-    const user = await UserModel.findOne({ email: email.toLowerCase() }).lean();
-    if (!user) {
-      res.status(401).json({ error: 'Invalid email or password' });
-      return;
-    }
-
-    const valid = bcrypt.compareSync(password, user.passwordHash);
-    if (!valid) {
-      res.status(401).json({ error: 'Invalid email or password' });
-      return;
-    }
-
-    if (user.isBlocked) {
-      res.status(403).json({ error: 'This user account has been blocked by an administrator.' });
-      return;
-    }
-
-    const publicUser: User = {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      phone: user.phone,
-      address: user.address,
-      createdAt: user.createdAt,
-      isBlocked: !!user.isBlocked,
-      cart: user.cart || [],
-      wishlist: user.wishlist || [],
-    };
-
-    const token = jwt.sign(publicUser, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, user: publicUser });
   });
 
   app.get('/api/auth/me', requireAuth, (req: CustomRequest, res) => {
@@ -290,6 +304,7 @@ async function startServer() {
       createdAt: u.createdAt,
       orderCount: orders.filter(o => o.customerId === u.id).length,
       wishlist: u.wishlist || [],
+      furniCoins: u.furniCoins || 0,
     }));
     res.json(allUsers);
   });
@@ -383,6 +398,33 @@ async function startServer() {
     res.json(updatedUser.cart);
   });
 
+  // --- RAZORPAY INTEGRATION ---
+  app.post('/api/create-razorpay-order', requireAuth, async (req, res) => {
+    const { amount } = req.body;
+    if (!amount) return res.status(400).json({ error: 'Amount is required' });
+    
+    try {
+      const auth = Buffer.from('rzp_test_SzEI4p4secrDZN:qPgcsn2aQN0068Itc1UdxGHM').toString('base64');
+      const response = await fetch('https://api.razorpay.com/v1/orders', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${auth}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          amount: Math.round(amount * 100), // Convert to paise
+          currency: 'INR',
+          receipt: 'rcpt_' + Math.random().toString(36).substring(2, 9)
+        })
+      });
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      console.error('Razorpay Error:', error);
+      res.status(500).json({ error: 'Razorpay order creation failed' });
+    }
+  });
+
   // --- PHASE 4: ORDER MANAGEMENT API ---
   app.get('/api/orders', requireAuth, async (req: CustomRequest, res) => {
     if (req.user!.role === 'admin') {
@@ -394,7 +436,7 @@ async function startServer() {
   });
 
   app.post('/api/orders', requireAuth, requireRole(['customer']), async (req: CustomRequest, res) => {
-    const { items, shippingAddress, paymentMethod, promoCode } = req.body;
+    const { items, shippingAddress, paymentMethod, promoCode, useCoins } = req.body;
     if (!items || !Array.isArray(items) || items.length === 0 || !shippingAddress) {
       res.status(400).json({ error: 'Order items and shipping address are required' });
       return;
@@ -441,6 +483,15 @@ async function startServer() {
       );
     }
 
+    let usedCoins = 0;
+    if (useCoins && req.user!.furniCoins && req.user!.furniCoins > 0) {
+      usedCoins = Math.min(totalAmount, req.user!.furniCoins);
+      totalAmount -= usedCoins;
+    }
+
+    // 1 FurniCoin earned per ₹100 spent
+    const earnedCoins = Math.floor(totalAmount / 100);
+
     const newOrder = {
       id: 'ord_' + Math.random().toString(36).substr(2, 9),
       customerId: req.user!.id,
@@ -450,11 +501,18 @@ async function startServer() {
       status: 'Pending' as OrderStatus,
       shippingAddress,
       paymentMethod: paymentMethod || 'Payment on Delivery',
+      usedCoins,
+      earnedCoins,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
     await OrderModel.create(newOrder);
+
+    await UserModel.updateOne(
+      { id: req.user!.id },
+      { $inc: { furniCoins: earnedCoins - usedCoins } }
+    );
 
     if (promoCode) {
       await PromoModel.findOneAndUpdate({ code: promoCode.trim().toUpperCase() }, { $inc: { usedCount: 1 } });

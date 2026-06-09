@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   ShoppingBag, MapPin, Phone, User as UserIcon, Mail, CheckCircle2, ClipboardList, 
-  Map, Trash2, ArrowRight, Check, Heart, HelpCircle, RefreshCw, Sparkles, ChevronRight, Download, Ticket, QrCode, X
+  Map, Trash2, ArrowRight, Check, Heart, HelpCircle, RefreshCw, Sparkles, ChevronRight, Download, Ticket, QrCode, Gift, Coins
 } from 'lucide-react';
 import { Order, OrderStatus, Product, Project, User, PromoCode } from '../types.js';
 
@@ -15,13 +15,13 @@ interface CustomerDashboardProps {
   cart: { product: Product; quantity: number }[];
   onUpdateCartQty: (productId: string, quantity: number) => void;
   onRemoveFromCart: (productId: string) => void;
-  onPlaceOrder: (shippingAddress: string, paymentMethod: string, promoCode?: string) => Promise<void>;
+  onPlaceOrder: (shippingAddress: string, paymentMethod: string, promoCode?: string, useCoins?: boolean) => Promise<void>;
   onToggleWishlist?: (productId: string) => void;
-  initialActiveSegment?: 'cart' | 'orders' | 'profile' | 'projects' | 'wishlist';
+  initialActiveSegment?: 'cart' | 'orders' | 'profile' | 'projects' | 'wishlist' | 'giftcards';
 }
 
 const PAYMENT_METHODS = [
-  'Razorpay (Cards/UPI/NetBanking)',
+  'UPI',
   'Cash on Delivery',
 ];
 
@@ -37,9 +37,9 @@ export default function CustomerDashboard({
   onRemoveFromCart,
   onPlaceOrder,
   onToggleWishlist,
-  initialActiveSegment = 'cart', // Default to 'cart'
+  initialActiveSegment = 'cart',
 }: CustomerDashboardProps) {
-  const [activeSegment, setActiveSegment] = useState<'cart' | 'orders' | 'profile' | 'projects' | 'wishlist'>(initialActiveSegment);
+  const [activeSegment, setActiveSegment] = useState<'cart' | 'orders' | 'profile' | 'projects' | 'wishlist' | 'giftcards'>(initialActiveSegment);
 
   // Profile Form States
   const [name, setName] = useState(user.name);
@@ -56,8 +56,7 @@ export default function CustomerDashboard({
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
   const [checkoutError, setCheckoutError] = useState('');
-  const [checkoutFailed, setCheckoutFailed] = useState(false);
-  const [checkoutFailedMessage, setCheckoutFailedMessage] = useState('');
+  const [useFurniCoins, setUseFurniCoins] = useState(false);
 
   // Advanced Checkout Flow States
   const [checkoutStep, setCheckoutStep] = useState<'form' | 'upi' | 'cod'>('form');
@@ -68,18 +67,14 @@ export default function CustomerDashboard({
   const cartSubtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
   const cartTax = Math.round(cartSubtotal * 0.08); // 8% simulation
   const discountAmt = appliedPromo ? Math.round(cartSubtotal * (appliedPromo.discount / 100)) : 0;
-  const cartTotal = cartSubtotal + cartTax - discountAmt;
-
-  // Razorpay SDK Loader function
-  const loadRazorpayScript = () => {
-    return new Promise((resolve) => {
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
-  };
+  const platformFee = 29; // Standard platform fee
+  let cartTotal = cartSubtotal + cartTax + platformFee - discountAmt;
+  
+  let coinDiscount = 0;
+  if (useFurniCoins && user.furniCoins) {
+    coinDiscount = Math.min(cartTotal, user.furniCoins);
+    cartTotal -= coinDiscount;
+  }
 
   const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,7 +88,7 @@ export default function CustomerDashboard({
     }
   };
 
-  const handleInitiateCheckout = async (e: React.FormEvent) => {
+  const handleInitiateCheckout = (e: React.FormEvent) => {
     e.preventDefault();
     if (cart.length === 0) return;
     if (!shippingAddress.trim()) {
@@ -103,69 +98,12 @@ export default function CustomerDashboard({
 
     setCheckoutError('');
     
-    if (paymentMethod.includes('Razorpay')) {
-      // Razorpay Test Mode Safety Check
-      if (cartTotal > 500000) {
-        setCheckoutError('Razorpay Test Mode Limit Exceeded! Please keep your cart total below ₹5,00,000 for testing purposes.');
-        return;
-      }
-
-      setCheckoutLoading(true);
-      const res = await loadRazorpayScript();
-      if (!res) {
-        setCheckoutError('Razorpay SDK failed to load. Please check your internet connection.');
-        setCheckoutLoading(false);
-        return;
-      }
-      
-      try {
-        const token = localStorage.getItem('token');
-        const orderRes = await fetch('/api/create-razorpay-order', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ amount: cartTotal })
-        });
-        const orderData = await orderRes.json();
-        
-        if (!orderData.id) throw new Error('Failed to initialize Razorpay');
-
-        const options = {
-          key: 'rzp_test_SzEI4p4secrDZN',
-          amount: orderData.amount,
-          currency: 'INR',
-          name: 'FurniDesign',
-          description: 'Premium Furniture Order',
-          order_id: orderData.id,
-          handler: async function (response: any) {
-            // Razorpay Payment successful!
-            handleFinalizeOrder(); 
-          },
-          prefill: { name: user.name, email: user.email, contact: user.phone || '' },
-          theme: { color: '#171717' }, // Neutral-900 color for brand consistency
-          modal: {
-            ondismiss: function() {
-              setCheckoutLoading(false);
-            }
-          }
-        };
-        
-        const paymentObject = new (window as any).Razorpay(options);
-        paymentObject.on('payment.failed', function (response: any) {
-          setCheckoutError('Payment failed: ' + response.error.description);
-          setCheckoutFailedMessage(response.error.description || 'Transaction was declined by the bank.');
-          setCheckoutFailed(true);
-          setCheckoutLoading(false);
-        });
-        paymentObject.open();
-      } catch(err: any) {
-        setCheckoutError(err.message || 'Payment initialization failed');
-        setCheckoutLoading(false);
-      }
-    } else if (paymentMethod === 'UPI') {
+    // Route to respective payment verification steps
+    if (paymentMethod === 'UPI') {
       setCheckoutStep('upi');
     } else {
-      // Generate random COD fee between 20 to 30
-      setCodFee(Math.floor(Math.random() * 11) + 20);
+      // Standardize COD fee for consistent invoice printing
+      setCodFee(25);
       setCheckoutStep('cod');
     }
   };
@@ -174,7 +112,7 @@ export default function CustomerDashboard({
     setCheckoutLoading(true);
 
     try {
-      await onPlaceOrder(shippingAddress, paymentMethod, appliedPromo?.code);
+      await onPlaceOrder(shippingAddress, paymentMethod, appliedPromo?.code, useFurniCoins);
       setCheckoutSuccess(true);
       setCheckoutStep('form');
       setTimeout(() => {
@@ -187,6 +125,15 @@ export default function CustomerDashboard({
     } finally {
       setCheckoutLoading(false);
     }
+  };
+
+  // Mock UPI verification loader
+  const handleUPIPaymentDone = () => {
+    setIsSimulatingPayment(true);
+    setTimeout(() => {
+      setIsSimulatingPayment(false);
+      handleFinalizeOrder();
+    }, 2500); // Wait 2.5 seconds showing loader
   };
 
   // Order status visual layout mapping
@@ -222,15 +169,16 @@ export default function CustomerDashboard({
     const codFeeValue = isCOD ? 25 : 0;
     const promo = promos.find(p => p && p.code === order.promoCode);
     const discountAmtValue = promo ? Math.round(subtotal * (promo.discount / 100)) : 0;
-    const grandTotal = subtotal + tax + pFee + codFeeValue - discountAmtValue;
+    const coinDiscountValue = order.usedCoins || 0;
+    const grandTotal = subtotal + tax + pFee + codFeeValue - discountAmtValue - coinDiscountValue;
     
-    return { subtotal, tax, pFee, isCOD, codFeeValue, discountAmtValue, grandTotal };
+    return { subtotal, tax, pFee, isCOD, codFeeValue, discountAmtValue, coinDiscountValue, grandTotal };
   };
 
   const handlePrintInvoice = (order: Order) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
-    const { subtotal, tax, pFee, isCOD, codFeeValue, discountAmtValue, grandTotal } = getOrderDetails(order);
+    const { subtotal, tax, pFee, isCOD, codFeeValue, discountAmtValue, coinDiscountValue, grandTotal } = getOrderDetails(order);
 
     printWindow.document.write(`
       <html>
@@ -244,10 +192,13 @@ export default function CustomerDashboard({
             .invoice-title { font-size: 12px; color: #78716c; text-transform: uppercase; letter-spacing: 2px; margin-top: 5px; font-weight: 600; }
             .details p { margin: 4px 0; font-size: 14px; color: #44403c; }
             .item { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px dashed #e7e5e4; font-size: 14px; }
-            .total { font-weight: bold; font-size: 1.3em; margin-top: 20px; text-align: right; padding-top: 15px; border-top: 2px solid #1c1917; }
             .footer { margin-top: 70px; text-align: center; color: #78716c; border-top: 1px solid #e7e5e4; padding-top: 30px; }
             .footer-logo { font-size: 20px; font-weight: bold; color: #1c1917; margin-bottom: 8px; letter-spacing: -0.5px; }
             .footer-logo span { color: #f59e0b; }
+            .summary-container { margin-top: 20px; padding-top: 15px; display: flex; flex-direction: column; align-items: flex-end; }
+            .summary-line { display: flex; justify-content: space-between; width: 320px; margin-bottom: 8px; font-size: 14px; color: #44403c; }
+            .summary-line.discount { color: #059669; font-weight: 500; }
+            .total { font-weight: bold; font-size: 1.3em; margin-top: 10px; text-align: right; padding-top: 15px; border-top: 2px solid #1c1917; width: 320px; display: flex; justify-content: space-between; }
             .watermark {
               position: fixed;
               top: 50%;
@@ -278,15 +229,24 @@ export default function CustomerDashboard({
             <p style="color: #78716c; font-size: 12px; text-transform: uppercase; margin-bottom: 8px; font-weight: bold;">Billed To:</p>
             <p><strong>${order.customerName}</strong></p>
             <p>${order.shippingAddress}</p>
-            <p>Email: ${user.email}</p>
-            ${user.phone ? `<p>Phone: ${user.phone}</p>` : ''}
             <p>Payment Method: ${order.paymentMethod}</p>
           </div>
 
-          <h3 style="font-size: 16px; border-bottom: 1px solid #1c1917; padding-bottom: 10px;">Order Summary</h3>
+          <h3 style="font-size: 16px; border-bottom: 1px solid #1c1917; padding-bottom: 10px;">Items Purchased</h3>
           ${(order.items || []).map(i => `<div class="item"><span>${i.name} (x${i.quantity})</span><span>₹${i.price * i.quantity}</span></div>`).join('')}
-          <div class="total">Total Amount: ₹${order.totalAmount} ${order.promoCode ? `<br><small style="font-weight:normal; color:#78716c; font-size:12px;">(Includes Promo: ${order.promoCode})</small>` : ''}</div>
           
+          <div class="summary-container">
+            <div class="summary-line"><span>Products Subtotal:</span> <span>₹${subtotal}</span></div>
+            <div class="summary-line"><span>Tax (8%):</span> <span>₹${tax}</span></div>
+            <div class="summary-line"><span>Platform Fee:</span> <span>₹${pFee}</span></div>
+            ${isCOD ? `<div class="summary-line"><span>COD Handling Fee:</span> <span>₹${codFeeValue}</span></div>` : ''}
+            ${order.promoCode ? `<div class="summary-line discount"><span>Promo Applied (${order.promoCode}):</span> <span>-₹${discountAmtValue}</span></div>` : ''}
+            ${coinDiscountValue > 0 ? `<div class="summary-line discount"><span>FurniCoins Redeemed:</span> <span>-₹${coinDiscountValue}</span></div>` : ''}
+            ${order.earnedCoins ? `<div class="summary-line" style="color: #f59e0b; font-weight: bold; font-size: 12px; margin-top: 5px;"><span>Coins Earned in this Order:</span> <span>+${order.earnedCoins} <span style="font-size:10px">🪙</span></span></div>` : ''}
+            
+            <div class="total"><span>Grand Total:</span> <span>₹${grandTotal}</span></div>
+          </div>
+
           <div class="footer">
             <div class="footer-logo">Furni<span>Design</span></div>
             <p style="font-size: 12px;">Thank you for trusting us with your home interior.</p>
@@ -314,6 +274,16 @@ export default function CustomerDashboard({
             <p className="text-xs text-neutral-500 font-mono">
               ROLE: CUSTOMER • REGISTERED ON {new Date(user.createdAt).toLocaleDateString()}
             </p>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-3 bg-amber-50 px-4 py-2.5 rounded-xl border border-amber-100 shrink-0">
+          <div className="bg-amber-100 p-2 rounded-full">
+            <Coins className="w-5 h-5 text-amber-600" />
+          </div>
+          <div>
+            <p className="text-[10px] text-amber-800 font-bold uppercase tracking-wider">FurniCoins Balance</p>
+            <p className="text-lg font-mono font-bold text-amber-600">{user.furniCoins || 0}</p>
           </div>
         </div>
 
@@ -371,6 +341,14 @@ export default function CustomerDashboard({
           >
             Profile Dossier
           </button>
+          <button
+            onClick={() => setActiveSegment('giftcards')}
+            className={`whitespace-nowrap px-3.5 py-1.5 text-xs font-semibold rounded-lg cursor-pointer transition-all ${
+              activeSegment === 'giftcards' ? 'bg-neutral-950 text-white' : 'text-neutral-500 hover:text-neutral-800'
+            }`}
+          >
+            E-Gift Cards
+          </button>
         </div>
       </div>
 
@@ -389,7 +367,7 @@ export default function CustomerDashboard({
             </div>
           ) : (
             <div className="space-y-6">
-              {[...orders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((order) => {
+              {orders.map((order) => {
                 const step = getWorkflowStep(order.status);
                 const details = getOrderDetails(order);
                 return (
@@ -425,6 +403,11 @@ export default function CustomerDashboard({
                           <span className="font-mono font-semibold text-neutral-950">₹{item.price * item.quantity}</span>
                         </div>
                       ))}
+                    </div>
+
+                    <div className="flex justify-between items-center bg-stone-50 border border-stone-100 rounded-lg p-3 text-xs">
+                      <span className="text-stone-500 font-mono">Payment Method: <strong>{order.paymentMethod}</strong></span>
+                      {order.earnedCoins ? <span className="font-bold text-amber-600">+{order.earnedCoins} Coins Earned</span> : <span className="text-stone-400">No coins earned</span>}
                     </div>
 
                     {/* Step-by-Step Graphical Workflow Tracker  */}
@@ -563,6 +546,13 @@ export default function CustomerDashboard({
             <div className="bg-white rounded-2xl border border-neutral-200 p-6 space-y-5 h-fit shadow-2xs">
               <h3 className="font-display font-bold text-neutral-950 text-sm">Draft Purchase Dispatch</h3>
               
+              {checkoutSuccess && (
+                <div className="p-3.5 bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs rounded-xl font-medium flex items-center gap-2">
+                  <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
+                  <span>Transaction processed! Order compiled synchronously. Redirecting...</span>
+                </div>
+              )}
+
               {checkoutError && (
                 <div className="p-3.5 bg-red-50 border border-red-100 text-red-700 text-xs rounded-xl">
                   {checkoutError}
@@ -623,6 +613,23 @@ export default function CustomerDashboard({
                   </div>
                 </div>
 
+                {/* FurniCoins Application */}
+                {user.furniCoins ? user.furniCoins > 0 && (
+                  <div className="bg-amber-50/50 border border-amber-200 rounded-xl p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Coins className="w-6 h-6 text-amber-500" />
+                      <div>
+                        <h4 className="text-xs font-bold text-neutral-900">Use FurniCoins</h4>
+                        <p className="text-[10px] text-neutral-500">Balance: {user.furniCoins} 🪙 (Value: ₹{user.furniCoins})</p>
+                      </div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" className="sr-only peer" checked={useFurniCoins} onChange={(e) => setUseFurniCoins(e.target.checked)} />
+                      <div className="w-9 h-5 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
+                  </div>
+                ) : null}
+
                 {/* Checkout pricing breakdown */}
                 <div className="border-t border-dashed border-neutral-200 pt-4 space-y-2.5 text-xs">
                   <div className="flex justify-between text-neutral-500">
@@ -636,8 +643,12 @@ export default function CustomerDashboard({
                     </div>
                   )}
                   <div className="flex justify-between text-neutral-500">
-                    <span>Tax & Logistics Simulation (8%)</span>
+                    <span>Tax & Logistics (8%)</span>
                     <span className="font-mono">₹{cartTax}</span>
+                  </div>
+                  <div className="flex justify-between text-neutral-500">
+                    <span>Platform Fee</span>
+                    <span className="font-mono">₹{platformFee}</span>
                   </div>
                   <div className="flex justify-between text-neutral-500">
                     <span>White-Glove Installation</span>
@@ -659,6 +670,42 @@ export default function CustomerDashboard({
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </form>
+              )}
+
+              {/* DYNAMIC UPI QR SCANNER STEP */}
+              {checkoutStep === 'upi' && (
+                <div className="space-y-5 animate-[fadeIn_0.2s_ease-out] text-center">
+                  <div className="space-y-1">
+                    <div className="mx-auto w-10 h-10 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mb-2">
+                      <QrCode className="w-5 h-5" />
+                    </div>
+                    <h4 className="font-bold text-neutral-900">Scan to Pay via UPI</h4>
+                    <p className="text-[10px] text-neutral-500 font-mono">Total Bill: ₹{cartTotal}</p>
+                  </div>
+
+                  <div className="bg-white p-4 inline-block rounded-2xl border border-neutral-200 shadow-sm mx-auto">
+                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=upi://pay?pa=furnidesign@upi&pn=FurniDesign&am=${cartTotal}`} alt="UPI QR Code" className="w-32 h-32" />
+                  </div>
+
+                  <div className="space-y-2.5 pt-2">
+                    <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest border-b border-neutral-100 pb-2 block">Or Pay Using Apps</span>
+                    <div className="flex justify-center gap-2.5">
+                      <button type="button" className="flex-1 py-2 bg-indigo-50 border border-indigo-100 rounded-lg text-[10px] font-bold text-indigo-700 hover:bg-indigo-100 transition cursor-pointer">PhonePe</button>
+                      <button type="button" className="flex-1 py-2 bg-sky-50 border border-sky-100 rounded-lg text-[10px] font-bold text-sky-700 hover:bg-sky-100 transition cursor-pointer">Paytm</button>
+                      <button type="button" className="flex-1 py-2 bg-emerald-50 border border-emerald-100 rounded-lg text-[10px] font-bold text-emerald-700 hover:bg-emerald-100 transition cursor-pointer">GPay</button>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex gap-2">
+                    <button type="button" onClick={() => setCheckoutStep('form')} disabled={isSimulatingPayment} className="flex-1 bg-neutral-100 hover:bg-neutral-200 text-neutral-600 font-semibold text-xs py-3 rounded-xl transition cursor-pointer disabled:opacity-50">
+                      Cancel
+                    </button>
+                    <button type="button" onClick={handleUPIPaymentDone} disabled={isSimulatingPayment || checkoutLoading} className="flex-[2] bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs py-3 rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-70">
+                      {(isSimulatingPayment || checkoutLoading) ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                      {(isSimulatingPayment || checkoutLoading) ? 'Verifying Payment...' : 'Payment Done'}
+                    </button>
+                  </div>
+                </div>
               )}
 
               {/* DYNAMIC COD CONFIRMATION STEP */}
@@ -829,6 +876,46 @@ export default function CustomerDashboard({
         </div>
       )}
 
+      {/* SEGMENT 5: E-GIFT CARDS */}
+      {activeSegment === 'giftcards' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+            <span className="text-xs font-bold font-mono text-neutral-600">GIFT CARDS & VOUCHERS</span>
+          </div>
+
+          <div className="bg-neutral-900 rounded-3xl p-8 md:p-12 text-center text-white relative overflow-hidden shadow-xl">
+            <div className="absolute inset-0 opacity-20 bg-[url('https://images.unsplash.com/photo-1577140917170-285929fb55b7?auto=format&fit=crop&q=80&w=800')] bg-cover bg-center"></div>
+            <div className="relative z-10 space-y-5 max-w-xl mx-auto">
+              <Gift className="w-12 h-12 text-amber-400 mx-auto" />
+              <h2 className="font-display text-3xl font-bold">Share the Gift of Design</h2>
+              <p className="text-neutral-300 text-sm leading-relaxed">
+                Surprise your loved ones with a FurniDesign E-Gift Card. Perfect for housewarmings, weddings, and special milestones.
+              </p>
+              
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-6">
+                {['₹5,000', '₹10,000', '₹25,000', 'Custom'].map((amt, idx) => (
+                  <button key={idx} className="bg-white/10 hover:bg-white/20 border border-white/20 px-4 py-3 rounded-xl font-mono font-bold text-sm transition cursor-pointer">
+                    {amt}
+                  </button>
+                ))}
+              </div>
+              
+              <button className="mt-6 px-8 py-3.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-lg shadow-amber-500/30 transition cursor-pointer">
+                Purchase Gift Card
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-neutral-200 p-6">
+            <h3 className="font-display font-semibold text-neutral-900 text-sm mb-4">My Active Gift Cards</h3>
+            <div className="p-8 border border-dashed border-neutral-200 rounded-xl text-center text-neutral-400">
+              <Ticket className="w-8 h-8 text-neutral-300 mx-auto mb-2" />
+              <p className="text-xs font-semibold">You don't have any active gift cards</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* SEGMENT 4: CLIENT DOSSIER & PROFILE EDITING */}
       {activeSegment === 'profile' && (
         <div className="bg-white rounded-2xl border border-neutral-200 p-6 space-y-6 shadow-2xs">
@@ -914,42 +1001,6 @@ export default function CustomerDashboard({
               Verify & Save Profile
             </button>
           </form>
-        </div>
-      )}
-
-      {/* Full screen success animation overlay (Moved outside to prevent disappearing when cart empties) */}
-      {checkoutSuccess && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-neutral-900/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
-          <div className="bg-white p-8 md:p-12 rounded-3xl shadow-2xl flex flex-col items-center text-center space-y-4 max-w-sm w-full mx-4 animate-[scaleIn_0.3s_ease-out]">
-            <div className="w-24 h-24 bg-emerald-100 rounded-full flex items-center justify-center mb-2">
-              <div className="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center animate-[bounce_0.6s_ease-in-out]">
-                <Check className="w-8 h-8 text-white" strokeWidth={4} />
-              </div>
-            </div>
-            <h3 className="text-2xl font-display font-bold text-neutral-900">Order Confirmed!</h3>
-            <p className="text-sm text-neutral-500">Your premium pieces are being prepared for white-glove dispatch.</p>
-            <div className="mt-4 pt-4 border-t border-neutral-100 w-full text-xs text-neutral-400 font-mono">
-              Redirecting to your pipeline...
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Full screen failure animation overlay */}
-      {checkoutFailed && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-neutral-900/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
-          <div className="bg-white p-8 md:p-12 rounded-3xl shadow-2xl flex flex-col items-center text-center space-y-4 max-w-sm w-full mx-4 animate-[scaleIn_0.3s_ease-out]">
-            <div className="w-24 h-24 bg-red-100 rounded-full flex items-center justify-center mb-2">
-              <div className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center animate-[bounce_0.6s_ease-in-out]">
-                <X className="w-8 h-8 text-white" strokeWidth={4} />
-              </div>
-            </div>
-            <h3 className="text-2xl font-display font-bold text-neutral-900">Payment Failed</h3>
-            <p className="text-sm text-neutral-500 leading-relaxed">Your payment could not be completed: <br/><strong className="text-neutral-900">{checkoutFailedMessage}</strong></p>
-            <button onClick={() => setCheckoutFailed(false)} className="mt-4 px-6 py-3.5 w-full bg-neutral-900 hover:bg-neutral-800 text-white font-semibold rounded-xl transition cursor-pointer shadow-md">
-              Try Again
-            </button>
-          </div>
         </div>
       )}
     </div>

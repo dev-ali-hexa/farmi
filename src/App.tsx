@@ -12,7 +12,7 @@ import Projects from './components/Projects.tsx';
 import AboutUs from './components/AboutUs.tsx';
 import ContactUs from './components/ContactUs.tsx';
 import { Product, Order, Project, User, OrderStatus, ProductCategory, PromoCode } from './types.ts';
-import { Sofa, KeyRound, Key, ShieldCheck, Info, Sparkles, Sliders } from 'lucide-react';
+import { Sofa, KeyRound, Key, ShieldCheck, Info, Sparkles, Sliders, X, MessageSquare, Send } from 'lucide-react';
 
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
@@ -20,7 +20,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('home');
   const [catalogCategory, setCatalogCategory] = useState<ProductCategory | 'All'>('All');
   const [showAuth, setShowAuth] = useState<boolean>(false);
-  const [customerDashboardActiveSegment, setCustomerDashboardActiveSegment] = useState<'cart' | 'orders' | 'profile' | 'projects' | 'wishlist'>('cart');
+  const [customerDashboardActiveSegment, setCustomerDashboardActiveSegment] = useState<'cart' | 'orders' | 'profile' | 'projects' | 'wishlist' | 'giftcards'>('cart');
   const [viewProductId, setViewProductId] = useState<string | null>(null);
   const [cartHydrated, setCartHydrated] = useState<boolean>(false);
   const cartSyncTimeoutRef = useRef<number | null>(null);
@@ -38,6 +38,11 @@ export default function App() {
   // Loader state variables
   const [loadingUser, setLoadingUser] = useState<boolean>(!!token);
   const [loadingData, setLoadingData] = useState<boolean>(false);
+
+  // Live Chat States
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState<{sender: 'bot' | 'user', text: string}[]>([{ sender: 'bot', text: 'Hello! Welcome to FurniDesign. How can we help you craft your dream space today?' }]);
 
   // Helper fetch request headers
   const getHeaders = () => {
@@ -267,7 +272,7 @@ export default function App() {
     });
   };
 
-  const handlePlaceOrder = async (shippingAddress: string, paymentMethod: string, promoCode?: string) => {
+  const handlePlaceOrder = async (shippingAddress: string, paymentMethod: string, promoCode?: string, useCoins: boolean = false) => {
     const itemsPayload = cart.map((item) => ({
       productId: item.product.id,
       quantity: item.quantity,
@@ -280,7 +285,8 @@ export default function App() {
         items: itemsPayload,
         shippingAddress,
         paymentMethod,
-        promoCode
+        promoCode,
+        useCoins
       }),
     });
 
@@ -292,6 +298,14 @@ export default function App() {
     // Success: refresh listings and sweep cart
     setCart([]);
     syncCartToDB([]);
+    
+    // Refresh user to get updated FurniCoins
+    const userRes = await fetch('/api/auth/me', { headers: getHeaders() });
+    if (userRes.ok) {
+      const updatedUser = await userRes.json();
+      setUser(updatedUser);
+    }
+
     fetchOrders();
     fetchProducts(); // Stock levels decremented
   };
@@ -472,6 +486,16 @@ export default function App() {
     if (res.ok) fetchPromos();
   };
 
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+    setChatMessages(prev => [...prev, { sender: 'user', text: chatInput }]);
+    setChatInput('');
+    setTimeout(() => {
+      setChatMessages(prev => [...prev, { sender: 'bot', text: 'Thank you for your message. One of our master designers will be with you shortly.' }]);
+    }, 1000);
+  };
+
   // Render correct sub-view
   const renderContent = () => {
     if (activeTab === 'home') {
@@ -646,27 +670,99 @@ export default function App() {
         />
 
         {/* Central main page content */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1" key={activeTab}>
           {renderContent()}
         </main>
       </div>
 
       {/* Auth overlay popup modal */}
       {showAuth && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="relative w-full max-w-md animate-[scaleIn_0.2s_ease-out]">
-            {/* Close button */}
-            <button
-              type="button"
-              onClick={() => setShowAuth(false)}
-              className="absolute top-4 right-4 bg-neutral-50 hover:bg-neutral-100 p-1.5 rounded-full text-neutral-500 hover:text-neutral-900 transition-colors cursor-pointer z-50"
-            >
-              &times;
-            </button>
-            <AuthModal onSuccess={handleAuthSuccess} onClose={() => setShowAuth(false)} />
+        <div className="fixed inset-0 z-50 bg-neutral-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="relative w-full max-w-4xl bg-white rounded-3xl border border-neutral-200 overflow-hidden shadow-2xl animate-[scaleIn_0.2s_ease-out] flex flex-col md:flex-row">
+            
+            {/* Luxury Brand Image Panel (Hidden on small screens) */}
+            <div className="hidden md:block md:w-1/2 relative bg-neutral-950">
+              <img 
+                src="https://images.unsplash.com/photo-1616486029423-aaa4789e8c9a?auto=format&fit=crop&q=80&w=800"
+                alt="Luxury Interior" 
+                referrerPolicy="no-referrer"
+                className="absolute inset-0 w-full h-full object-cover opacity-70"
+                onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400/F5F5F5/BDBDBD?text=Login+Image'; }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-900/20 to-transparent"></div>
+              
+              <div className="absolute bottom-0 left-0 p-10 text-white space-y-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="bg-amber-500 p-2.5 rounded-xl shadow-lg">
+                    <Sofa className="w-5 h-5 text-white" />
+                  </div>
+                  <span className="font-display text-xl font-bold tracking-tight">Furni<span className="text-amber-500">Design</span></span>
+                </div>
+                <h3 className="font-display text-3xl font-bold leading-tight">Elevate your<br/>living space.</h3>
+                <p className="text-[10px] text-neutral-400 font-mono uppercase tracking-widest pt-2">Secure Authentication Portal</p>
+              </div>
+            </div>
+
+            {/* Auth Form Area */}
+            <div className="w-full md:w-1/2 relative bg-white flex flex-col justify-center min-h-[500px]">
+              {/* Close button */}
+              <button
+                type="button"
+                onClick={() => setShowAuth(false)}
+                className="absolute top-5 right-5 bg-neutral-100 hover:bg-neutral-200 p-2 rounded-full text-neutral-500 hover:text-neutral-900 transition-colors cursor-pointer z-50"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              
+              <div className="p-6 md:p-12 w-full max-w-md mx-auto">
+                <AuthModal onSuccess={handleAuthSuccess} onClose={() => setShowAuth(false)} />
+              </div>
+            </div>
           </div>
         </div>
       )}
+
+      {/* LIVE CHAT WIDGET */}
+      <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end">
+        {isChatOpen && (
+          <div className="w-80 bg-white rounded-2xl shadow-2xl border border-neutral-200 overflow-hidden mb-4 animate-[fadeInUp_0.2s_ease-out] flex flex-col">
+            <div className="bg-neutral-950 p-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                <span className="font-semibold text-sm">Design Concierge</span>
+              </div>
+              <button onClick={() => setIsChatOpen(false)} className="text-neutral-400 hover:text-white transition cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="h-64 p-4 overflow-y-auto bg-neutral-50 space-y-3">
+              {chatMessages.map((msg, idx) => (
+                <div key={idx} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] p-3 rounded-2xl text-xs leading-relaxed ${msg.sender === 'user' ? 'bg-amber-500 text-white rounded-br-sm' : 'bg-white border border-neutral-200 text-neutral-700 rounded-bl-sm shadow-sm'}`}>
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-neutral-100 flex gap-2">
+              <input
+                type="text"
+                placeholder="Type your message..."
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                className="flex-1 bg-neutral-100 border-none rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-neutral-950"
+              />
+              <button type="submit" className="p-2 bg-neutral-950 text-white rounded-xl hover:bg-neutral-800 transition cursor-pointer shrink-0">
+                <Send className="w-4 h-4" />
+              </button>
+            </form>
+          </div>
+        )}
+        <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-14 h-14 bg-neutral-950 text-amber-500 rounded-full shadow-xl hover:scale-105 transition-transform flex items-center justify-center cursor-pointer relative">
+          {isChatOpen ? <X className="w-6 h-6" /> : <MessageSquare className="w-6 h-6" />}
+          {!isChatOpen && <span className="absolute top-0 right-0 w-3.5 h-3.5 bg-red-500 border-2 border-white rounded-full"></span>}
+        </button>
+      </div>
 
       {/* Styled custom footer */}
       <footer className="bg-white border-t border-neutral-100 py-8 md:py-12 text-center text-xs text-neutral-400 select-none">
@@ -717,6 +813,9 @@ export default function App() {
 
         <div className="max-w-7xl mx-auto px-4 mt-8 pt-6 border-t border-stone-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 font-mono text-[10px] text-neutral-400">
           <span>&copy; 2026 FurniDesign Systems. All rights reserved.</span>
+          <span className="text-[11px] font-sans">
+            Created with <span className="text-red-500 animate-pulse">❤️</span> by Developer <strong className="text-neutral-700">ALI</strong>
+          </span>
         </div>
       </footer>
     </div>

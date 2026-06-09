@@ -41,7 +41,8 @@ const userSchema = new mongoose.Schema<DbUser>({
   passwordHash: { type: String, required: true },
   isBlocked: { type: Boolean, default: false },
   cart: { type: [cartItemSchema], default: [] },
-  wishlist: { type: [String], default: [] }
+  wishlist: { type: [String], default: [] },
+  furniCoins: { type: Number, default: 0 }
 });
 
 // Product Schema
@@ -77,6 +78,8 @@ const orderSchema = new mongoose.Schema<Order>({
   status: { type: String, enum: ['Pending', 'Processing', 'Shipped', 'Delivered'], default: 'Pending', required: true },
   shippingAddress: { type: String, required: true },
   paymentMethod: { type: String, required: true },
+  usedCoins: { type: Number, default: 0 },
+  earnedCoins: { type: Number, default: 0 },
   createdAt: { type: String, required: true },
   updatedAt: { type: String, required: true }
 });

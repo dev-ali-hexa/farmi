@@ -58,6 +58,9 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
   const [wishlistToastMessage, setWishlistToastMessage] = useState('');
   const toastTimeoutRef = useRef<number | null>(null);
   const [newReviewRating, setNewReviewRating] = useState(5);
+  const [showCartToast, setShowCartToast] = useState(false);
+  const [cartToastMessage, setCartToastMessage] = useState('');
+  const cartToastTimeoutRef = useRef<number | null>(null);
 
   // Handle external product view request (from Home Page offers)
   useEffect(() => {
@@ -198,31 +201,33 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
 
   return (
     <div className="space-y-8 animate-[fadeIn_0.3s_ease-out]">
-      {/* Curved Hero spotlight section */}
-      <div className="relative rounded-3xl overflow-hidden bg-neutral-900 text-white min-h-[220px] md:min-h-[280px] flex items-center p-6 md:p-12 shadow-md">
-        <div className="absolute inset-0 opacity-40 bg-[url('https://images.unsplash.com/photo-1540518614846-7eded433c457?auto=format&fit=crop&q=80&w=1200')] bg-cover bg-center"></div>
-        <div className="absolute inset-0 bg-linear-to-r from-neutral-900/40 via-neutral-900/10 to-transparent"></div>
-        
-        <motion.div 
-          initial={{ opacity: 0, x: -30 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
-          className="relative max-w-xl space-y-3 z-10"
-        >
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-mono tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/20">
-            FURNIDESIGN PORTFOLIO CREATIVE
-          </span>
-          <h2 className="font-display text-2xl md:text-4xl font-semibold tracking-tight leading-tight">
-            Curated Furnishings & Bespoke Comforts
-          </h2>
-          <p className="text-xs md:text-sm text-stone-300 leading-relaxed max-w-md">
-            Handcrafted local American woodwork line structures, customized velvet textures, and gold premium borders.
-          </p>
-        </motion.div>
-      </div>
+      {!selectedProduct ? (
+        <>
+          {/* Curved Hero spotlight section */}
+          <div className="relative rounded-3xl overflow-hidden bg-neutral-900 text-white min-h-[220px] md:min-h-[280px] flex items-center p-6 md:p-12 shadow-md">
+            <div className="absolute inset-0 opacity-40 bg-[url('https://images.unsplash.com/photo-1540518614846-7eded433c457?auto=format&fit=crop&q=80&w=1200')] bg-cover bg-center"></div>
+            <div className="absolute inset-0 bg-linear-to-r from-neutral-900/40 via-neutral-900/10 to-transparent"></div>
+            
+            <motion.div 
+              initial={{ opacity: 0, x: -30 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+              className="relative max-w-xl space-y-3 z-10"
+            >
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-mono tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/20">
+                FURNIDESIGN PORTFOLIO CREATIVE
+              </span>
+              <h2 className="font-display text-2xl md:text-4xl font-semibold tracking-tight leading-tight">
+                Curated Furnishings & Bespoke Comforts
+              </h2>
+              <p className="text-xs md:text-sm text-stone-300 leading-relaxed max-w-md">
+                Handcrafted local American woodwork line structures, customized velvet textures, and gold premium borders.
+              </p>
+            </motion.div>
+          </div>
 
-      {/* Main Catalog body: Sidebar Filter + Catalog Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* Main Catalog body: Sidebar Filter + Catalog Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
         {/* Left Sidebar Filters Panel */}
         <aside className="lg:col-span-3 bg-white border border-stone-100 rounded-3xl p-6 space-y-6">
@@ -411,14 +416,14 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
                     setDetailImageIdx(0);
                     setActiveDetailTab('Description');
                   }}
-                  className="group bg-white rounded-3xl border border-stone-150 overflow-hidden hover:shadow-lg hover:border-neutral-200/80 transition-all duration-300 flex flex-col h-full cursor-pointer"
+                  className="group bg-white rounded-3xl border border-stone-150 overflow-hidden hover:shadow-lg hover:border-neutral-200/80 transition-all duration-300 flex flex-col h-full cursor-pointer hover:-translate-y-1"
                   onMouseEnter={() => setHoveredProduct(prod.id)}
                   onMouseLeave={() => setHoveredProduct(null)}
                 >
                   {/* Thumbnail area with tags */}
                   <div className="relative aspect-4/3 bg-stone-50 overflow-hidden border-b border-stone-100">
                     <img
-                      src={prod.images?.[0] || ''}
+                      src={prod.images?.[0] || 'https://via.placeholder.com/300/F5F5F5/BDBDBD?text=No+Image'}
                       alt={prod.name}
                       referrerPolicy="no-referrer"
                       className="object-cover w-full h-full group-hover:scale-103 transition-transform duration-500 ease-out"
@@ -515,27 +520,26 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
           )}
         </section>
       </div>
+        </>
+      ) : (
+        <div className="w-full bg-white rounded-3xl border border-stone-200 overflow-hidden shadow-sm animate-[fadeIn_0.25s_ease-out] flex flex-col">
+          {/* --- SELECTED PRODUCT ADVANCED DETAIL VIEW --- */}
+          
+          {/* Header with close */}
+          <div className="px-6 py-4.5 border-b border-stone-100 flex flex-wrap gap-4 items-center justify-between bg-stone-50/50">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
+              Home / Products / {selectedProduct.category} / {selectedProduct.name}
+            </span>
+            <button
+              onClick={() => { setSelectedProduct(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+              className="px-4 py-2 rounded-xl bg-white border border-stone-200 text-stone-600 hover:text-stone-950 transition hover:bg-stone-50 cursor-pointer flex items-center gap-2 text-xs font-bold shadow-xs"
+            >
+              <span>&larr; Back to Catalog</span>
+            </button>
+          </div>
 
-      {/* --- SELECTED PRODUCT ADVANCED DETAIL DIALOG MODAL --- */}
-      {selectedProduct && (
-        <div className="fixed inset-0 z-50 bg-neutral-900/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="relative w-full max-w-5xl bg-white rounded-3xl border border-stone-200 overflow-hidden shadow-2xl animate-[scaleIn_0.25s_ease-out] flex flex-col max-h-[92vh]">
-            
-            {/* Modal header with close */}
-            <div className="px-6 py-4.5 border-b border-stone-100 flex items-center justify-between bg-stone-50/50">
-              <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
-                Home / Products / {selectedProduct.category} / {selectedProduct.name}
-              </span>
-              <button
-                onClick={() => setSelectedProduct(null)}
-                className="p-1.5 rounded-full bg-white border border-stone-200 text-stone-500 hover:text-stone-900 transition hover:bg-stone-50 cursor-pointer"
-              >
-                <X className="w-4.5 h-4.5" />
-              </button>
-            </div>
-
-            {/* Modal Scroll area */}
-            <div className="overflow-y-auto flex-1 p-6 md:p-8 space-y-8">
+          {/* Content area */}
+          <div id="product-detail-scroll-area" className="flex-1 p-6 md:p-8 space-y-8">
               
               {/* Top part: Splitted Showcase and Core checkout settings */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -546,7 +550,7 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
                   {/* Large Primary detail thumbnail */}
                   <div className="relative aspect-4/3 rounded-2xl overflow-hidden bg-stone-50 border border-stone-200">
                     <img
-                      src={selectedProduct.images?.[detailImageIdx] || selectedProduct.images?.[0] || ''}
+                      src={selectedProduct.images?.[detailImageIdx] || selectedProduct.images?.[0] || 'https://via.placeholder.com/400/F5F5F5/BDBDBD?text=Product+Image'}
                       alt={selectedProduct.name}
                       referrerPolicy="no-referrer"
                       className="object-cover w-full h-full"
@@ -568,7 +572,6 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
                           detailImageIdx === idx ? 'border-amber-500 ring-2 ring-amber-100' : 'border-neutral-200 hover:border-neutral-400'
                         }`}
                       >
-                        <img src={img} alt="sub" className="w-full h-full object-cover" />
                       </button>
                     ))}
                   </div>
@@ -691,6 +694,10 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
                             for (let i = 0; i < selectedQuantity; i++) {
                               onAddToCart(selectedProduct);
                             }
+                            setCartToastMessage(`${selectedQuantity}x ${selectedProduct.name} added to cart!`);
+                            setShowCartToast(true);
+                            if (cartToastTimeoutRef.current) clearTimeout(cartToastTimeoutRef.current);
+                            cartToastTimeoutRef.current = window.setTimeout(() => setShowCartToast(false), 3000);
                             setSelectedProduct(null);
                           }}
                           disabled={selectedProduct.stock === 0}
@@ -988,10 +995,42 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
                     </div>
                   </div>
                 )}
+
+              </div>
+
+              {/* SIMILAR PRODUCTS SECTION */}
+              <div className="pt-8 border-t border-stone-100 space-y-4">
+                <h3 className="font-display font-bold text-lg text-neutral-900">You Might Also Like</h3>
+                <div className="flex overflow-x-auto gap-4 pb-4 scrollbar-none snap-x">
+                  {products
+                    .filter(p => p && p.id !== selectedProduct.id)
+                    .sort((a, b) => (a.category === selectedProduct.category ? -1 : 1))
+                    .slice(0, 8)
+                    .map(prod => (
+                      <div 
+                        key={prod.id} 
+                        onClick={() => {
+                          setSelectedProduct(prod);
+                          setDetailImageIdx(0);
+                          setActiveDetailTab('Description');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="min-w-[160px] sm:min-w-[180px] flex-shrink-0 group bg-white rounded-2xl border border-stone-150 overflow-hidden hover:shadow-lg hover:border-neutral-200 transition-all duration-300 cursor-pointer snap-start"
+                      >
+                        <div className="relative aspect-square bg-stone-50 overflow-hidden">
+                          <img src={prod.images?.[0] || 'https://via.placeholder.com/300/F5F5F5/BDBDBD?text=No+Image'} alt={prod.name} referrerPolicy="no-referrer" className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500 ease-out" />
+                        </div>
+                        <div className="p-4 space-y-1">
+                          <h4 className="font-display font-bold text-neutral-950 text-[11px] truncate">{prod.name}</h4>
+                          <p className="text-[9px] text-neutral-500 line-clamp-2 leading-tight">{prod.description}</p>
+                          <div className="flex items-center justify-between"><span className="font-mono text-xs font-bold text-red-600">₹{prod.price}</span><span className="text-[10px] text-neutral-400 font-mono truncate ml-2">{prod.category}</span></div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
               </div>
             </div>
           </div>
-        </div>
       )}
 
       {/* Wishlist Toast Notification */}
@@ -1000,6 +1039,17 @@ export default function ProductCatalog({ products, user, onAddToCart, onOrderNow
           <Heart className="w-4 h-4 text-rose-400 fill-rose-400" />
           <span>{wishlistToastMessage}</span>
           <button onClick={() => setShowWishlistToast(false)} className="ml-2 text-neutral-300 hover:text-white transition">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Cart Toast Notification */}
+      {showCartToast && (
+        <div className="fixed top-24 right-4 sm:right-8 bg-emerald-600 text-white px-5 py-3.5 rounded-2xl shadow-xl text-xs font-semibold flex items-center gap-2 animate-[fadeIn_0.3s_ease-out] z-50">
+          <ShoppingCart className="w-4 h-4 text-emerald-100 fill-emerald-100" />
+          <span>{cartToastMessage}</span>
+          <button onClick={() => setShowCartToast(false)} className="ml-3 text-emerald-200 hover:text-white transition cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>

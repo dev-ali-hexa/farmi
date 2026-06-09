@@ -79,6 +79,7 @@ export default function AdminPanel({
   const [promoError, setPromoError] = useState('');
   const [promoSuccess, setPromoSuccess] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState<'All' | OrderStatus>('All');
+  const [userRoleFilter, setUserRoleFilter] = useState<'All' | 'customer' | 'designer' | 'admin'>('All');
 
   // Safe Date formatter to prevent "Invalid time value" white screen crashes
   const formatSafeDate = (d: any) => {
@@ -298,7 +299,7 @@ export default function AdminPanel({
         <div className="space-y-8">
           {/* KPI Cards bento-grid */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white rounded-2xl border border-neutral-200 p-5 space-y-2">
+            <div onClick={() => setSubTab('customers')} className="bg-white rounded-2xl border border-neutral-200 p-5 space-y-2 cursor-pointer hover:border-neutral-300 hover:shadow-sm transition">
               <div className="flex justify-between items-center text-neutral-400">
                 <Users className="w-4 h-4" />
                 <span className="text-[10px] font-mono tracking-wider uppercase font-bold text-neutral-400">MEMBER</span>
@@ -309,7 +310,7 @@ export default function AdminPanel({
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl border border-neutral-200 p-5 space-y-2">
+            <div onClick={() => setSubTab('orders')} className="bg-white rounded-2xl border border-neutral-200 p-5 space-y-2 cursor-pointer hover:border-neutral-300 hover:shadow-sm transition">
               <div className="flex justify-between items-center text-neutral-400">
                 <ShoppingCart className="w-4 h-4" />
                 <span className="text-[10px] font-mono tracking-wider uppercase font-bold text-neutral-400">PIPELINE</span>
@@ -320,7 +321,7 @@ export default function AdminPanel({
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl border border-neutral-200 p-5 space-y-2">
+            <div onClick={() => setSubTab('products')} className="bg-white rounded-2xl border border-neutral-200 p-5 space-y-2 cursor-pointer hover:border-neutral-300 hover:shadow-sm transition">
               <div className="flex justify-between items-center text-neutral-400">
                 <Package className="w-4 h-4" />
                 <span className="text-[10px] font-mono tracking-wider uppercase font-bold text-neutral-400">STOCK</span>
@@ -671,6 +672,24 @@ export default function AdminPanel({
                     <span>Add User</span>
                   </button>
                 </div>
+
+                {/* User Role Filters */}
+                <div className="flex gap-2 overflow-x-auto scrollbar-none pb-1">
+                  {(['All', 'customer', 'designer', 'admin'] as const).map((role) => (
+                    <button
+                      key={role}
+                      onClick={() => setUserRoleFilter(role)}
+                      className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg border transition-all whitespace-nowrap cursor-pointer ${
+                        userRoleFilter === role
+                          ? 'bg-neutral-900 text-white border-neutral-900 shadow-sm'
+                          : 'bg-white text-neutral-500 border-neutral-200 hover:border-neutral-300'
+                      }`}
+                    >
+                      {role === 'All' ? 'All' : `${role}s`} ({role === 'All' ? customers.length : customers.filter(c => c.role === role).length})
+                    </button>
+                  ))}
+                </div>
+
                 <input
                   type="text"
                   placeholder="Search by name or email..."
@@ -683,6 +702,7 @@ export default function AdminPanel({
               <div className="divide-y divide-neutral-100 overflow-y-auto max-h-[500px]">
                 {customers
                   .filter(c => c && ((c.name || '').toLowerCase().includes(customerSearchQuery.toLowerCase()) || (c.email || '').toLowerCase().includes(customerSearchQuery.toLowerCase())))
+                  .filter(c => userRoleFilter === 'All' || c.role === userRoleFilter)
                   .map((c) => (
                   <div
                     key={c.id}
@@ -711,6 +731,11 @@ export default function AdminPanel({
                             BLOCKED
                           </span>
                         )}
+                      {(c.furniCoins ?? 0) > 0 && (
+                        <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                          {c.furniCoins} 🪙
+                        </span>
+                      )}
                       </div>
                       <span className="text-[10px] text-neutral-400 font-mono tracking-wide">{c.email}</span>
                     </div>
@@ -892,6 +917,10 @@ export default function AdminPanel({
                         {currentSelectedUser.isBlocked ? 'Blocked' : 'Active'}
                       </span>
                     </div>
+                    <div className="bg-neutral-50/50 p-3.5 rounded-xl border border-neutral-100 space-y-1 min-w-[70px]">
+                      <span className="text-neutral-400 block font-mono font-semibold">COINS</span>
+                      <strong className="text-amber-600 text-sm font-bold block">{currentSelectedUser.furniCoins || 0} 🪙</strong>
+                    </div>
                   </div>
 
                   <div className="bg-neutral-50/50 p-3.5 rounded-xl border border-neutral-100 space-y-1 text-xs">
@@ -1041,7 +1070,7 @@ export default function AdminPanel({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100 text-xs text-neutral-700">
-                  {filteredOrders.map((o) => (
+                  {[...filteredOrders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((o) => (
                     <tr key={o.id || Math.random()} className="hover:bg-neutral-50/30 transition">
                       <td className="p-4 font-mono font-bold text-neutral-500">
                         {o.id?.toUpperCase() || 'UNKNOWN'}

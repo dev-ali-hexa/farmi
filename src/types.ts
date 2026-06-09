@@ -20,6 +20,7 @@ export interface User extends BaseEntity {
   isBlocked?: boolean;
   wishlist?: string[];
   cart?: CartItem[];
+  furniCoins?: number;
 }
 
 export interface DbUser extends User {
@@ -66,6 +67,8 @@ export interface Order extends BaseEntity {
   shippingAddress: string;
   paymentMethod: string;
   promoCode?: string;
+  usedCoins?: number;
+  earnedCoins?: number;
   updatedAt: string;
 }
 

@@ -58,10 +58,10 @@ export default function Navbar({
                 <button
                   key={link.id}
                   onClick={() => setActiveTab(link.id)}
-                  className={`px-4.5 py-2.5 text-xs font-semibold rounded-xl transition cursor-pointer ${
+                  className={`px-4.5 py-2.5 text-xs font-semibold rounded-xl transition-all duration-200 cursor-pointer ${
                     works
                       ? 'bg-neutral-950 text-white shadow-md shadow-neutral-950/10'
-                      : 'text-stone-600 hover:text-neutral-950 hover:bg-stone-50'
+                      : 'text-stone-600 hover:text-neutral-950 hover:bg-stone-50 active:scale-95'
                   }`}
                 >
                   {link.label}
